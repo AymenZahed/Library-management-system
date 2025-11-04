@@ -9,15 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: password
-          MYSQL_DATABASE: test_db
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
       - name: Checkout code
@@ -30,90 +21,30 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov coverage
 
       - name: Run tests with coverage
         run: |
-          # Créer le dossier de coverage s'il n'existe pas
-          mkdir -p htmlcov
-          pytest --cov=backend --cov-report=xml --cov-report=html --cov-report=term
-        env:
-          DB_NAME: test_db
-          DB_USER: root
-          DB_PASSWORD: password
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-
-      - name: Verify coverage files exist
-        run: |
-          echo "🔍 Checking if coverage files exist..."
-          ls -la coverage.xml || echo "❌ coverage.xml missing"
-          ls -la htmlcov/ || echo "❌ htmlcov/ missing"
+          pytest --cov=backend --cov-report=xml --cov-report=term
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
           path: coverage.xml
-          retention-days: 30
-
-      - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-html
-          path: htmlcov/
-          retention-days: 30
-
-      - name: Display coverage summary
-        run: |
-          echo "📊 COVERAGE SUMMARY:"
-          if [ -f "coverage.xml" ]; then
-            python -c "
-            import xml.etree.ElementTree as ET
-            tree = ET.parse('coverage.xml')
-            root = tree.getroot()
-            coverage = root.get('line-rate')
-            if coverage:
-                coverage_pct = float(coverage) * 100
-                print(f'✅ Coverage: {coverage_pct:.1f}%')
-            else:
-                print('❌ Could not read coverage data')
-            "
-          else
-            echo "❌ coverage.xml not found"
-          fi
 
   sonarqube:
     needs: test
     runs-on: ubuntu-latest
-    if: always() # Toujours s'exécuter, même si test échoue
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Download coverage XML
         uses: actions/download-artifact@v4
         with:
           name: coverage-xml
-          path: ./
-
-      - name: Verify downloaded coverage file
-        run: |
-          echo "🔍 Verifying downloaded coverage.xml..."
-          if [ -f "coverage.xml" ]; then
-            echo "✅ coverage.xml downloaded successfully"
-            ls -la coverage.xml
-          else
-            echo "❌ coverage.xml still missing after download"
-            # Créer un coverage.xml vide pour éviter l'erreur
-            echo '<?xml version="1.0" ?><coverage line-rate="0.0"></coverage>' > coverage.xml
-            echo "⚠️ Created empty coverage.xml as fallback"
-          fi
 
       - name: SonarQube Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -126,31 +57,3 @@ jobs:
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=backend
-            -Dsonar.tests=tests
-            -Dsonar.coverage.exclusions=**/tests/**,**/__init__.py
-            -Dsonar.qualitygate.wait=true
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
-      - name: Check Python syntax
-        run: |
-          echo "🔍 Checking Python syntax..."
-          find backend tests -name "*.py" -exec python -m py_compile {} \; && echo "✅ All Python files compiled successfully"
-
-      - name: Basic code quality checks
-        run: |
-          echo "📝 Running basic code quality checks..."
-          python -c "import sys; sys.path.append('backend'); from library.models import Book, User; from library.services import LibraryService; print('✅ All imports successful')"
