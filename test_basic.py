@@ -16,4 +16,4 @@ def test_list_operations():
     """Test sur les listes"""
     numbers = [1, 2, 3]
     assert len(numbers) == 3
-    assert sum(numbers) == 8
+    assert sum(numbers) == 100
