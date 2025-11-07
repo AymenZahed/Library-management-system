@@ -160,21 +160,20 @@ jobs:
             echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
           fi
 
-      - name: 🔍 Analyse SonarCloud
-  uses: SonarSource/sonarqube-scan-action@v5.0.0
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  with:
-    args: >
-      -Dsonar.host.url=https://sonarcloud.io
-      -Dsonar.organization=library-system-management
-      -Dsonar.projectKey=AymenZahed_Library-management-system
-      -Dsonar.python.coverage.reportPaths=coverage.xml
-      -Dsonar.sources=backend
-      -Dsonar.coverage.minimumCoverage=0
-      -Dsonar.branch.name=${{ github.ref_name }}
-
+      - name: 🔍 Analyse SonarQube
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.organization=library-system-management
+            -Dsonar.projectKey=AymenZahed_Library-management-system
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=backend
+            -Dsonar.coverage.minimumCoverage=0
+            -Dsonar.branch.name=${{ github.ref_name }}
 
       - name: 📊 Résumé SonarQube
         run: |
