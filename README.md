@@ -25,11 +25,11 @@ Système de gestion de bibliothèque avec architecture microservices (Django + V
 ## 🚀 Installation
 
 ```bash
-# Backend
+# BACKEND
 cd backend
 pip install -r requirements.txt
 
-# Frontend
+# FRONTEND
 cd frontend
 npm install
 ```
