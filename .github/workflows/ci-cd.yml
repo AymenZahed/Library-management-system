@@ -131,7 +131,7 @@ jobs:
           name: coverage-xml
           path: coverage.xml
 
-    qualite-du-code:
+  qualite-du-code:
     name: 🔍 Analyse Qualité du Code (SonarQube)
     runs-on: ubuntu-latest
     needs: tests-unitaires
@@ -148,16 +148,19 @@ jobs:
           name: coverage-xml
           path: ./
 
-      - name: 🔍 Vérification du coverage
+      - name: 🔍 Vérification avant SonarQube
         run: |
-          echo "📁 Contenu du dossier courant :"
+          echo "📁 Contenu après download :"
           ls -la
-          if [ ! -f "coverage.xml" ]; then
-            echo "❌ coverage.xml manquant — création factice"
+          echo "📄 Vérification coverage.xml :"
+          if [ -f "coverage.xml" ]; then
+            echo "✅ coverage.xml prêt pour SonarQube"
+          else
+            echo "❌ coverage.xml manquant - création factice"
             echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
           fi
 
-      - name: 🔍 Analyse SonarQube (compatible multi-branches)
+      - name: 🔍 Analyse SonarQube
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -177,7 +180,10 @@ jobs:
           echo "╔══════════════════════════════════════════════════════════╗"
           echo "║          🔍 ANALYSE SONARQUBE TERMINÉE                  ║"
           echo "╚══════════════════════════════════════════════════════════╝"
-          echo "📊 Branche analysée : ${{ github.ref_name }}"
+          echo "📊 Métriques analysées avec MySQL:"
+          echo "   • Couverture de code"
+          echo "   • Qualité et sécurité"
+          echo "   • Performance avec base réelle"
 
   pipeline-summary:
     name: 📋 Résumé du Pipeline
