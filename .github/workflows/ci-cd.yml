@@ -167,8 +167,8 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.organization= library-system-management
-            -Dsonar.projectKey= AymenZahed_Library-management-system
+            -Dsonar.organization=library-system-management
+            -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=backend
             -Dsonar.coverage.minimumCoverage=0
