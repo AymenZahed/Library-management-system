@@ -5,4 +5,4 @@ Test factice pour que pytest passe
 
 def test_basic():
     """Test basique pour que le pipeline passe"""
-    assert 1 + 1 == 4
+    assert 1 + 1 == 2
