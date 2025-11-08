@@ -63,36 +63,40 @@ L’objectif est de développer une application web en appliquant la méthode **
 Library-Management-System/
 │
 ├── 📁 backend/                              # Tous les microservices backend
-│   ├── 📁 api-gateway/                      # API Gateway
-│   ├── 📁 user-service/                     # Microservice Users
-│   ├── 📁 books-service/                    # Microservice Books
-│   ├── 📁 loans-service/                    # Microservice Loans
-│   ├── 📁 notifications-service/            # Microservice Notifications
-│   └── 📁 shared/                           # Code partagé (utils, configs)
-├── 📁 frontend/                             # Application Vue.js
-├── 📁 tests/                                # Tests d'intégration globaux
-├── 📁 docs/                                 # Documentation du projet
-├── 📁 scripts/                              # Scripts utilitaires
-├── 📄 docker-compose.yml                    # Configuration Docker Compose
-├── 📄 .gitignore                            # Fichiers à ignorer par Git
-├── 📄 README.md                             # Documentation principale
-├── 📄 LICENSE                               # Licence du projet
-└── 📄 CONTRIBUTING.md                       # Guide de contribution
-
-
-# Stratégie de branches
-Nous suivons le modèle Git Flow :
-
-main             ← toujours stable (prête pour la production)
+│   ├── 📁 api-gateway/                      # Point d’entrée des requêtes API
+│   ├── 📁 user-service/                     # Microservice de gestion des utilisateurs
+│   ├── 📁 books-service/                    # Microservice de gestion des livres
+│   ├── 📁 loans-service/                    # Microservice de gestion des emprunts
+│   ├── 📁 notifications-service/            # Microservice de notifications
+│   └── 📁 shared/                           # Modules partagés (utils, configs, modèles communs)
 │
-├── develop      ← branche d’intégration de toutes les nouvelles fonctionnalités
+├── 📁 frontend/                             # Application Vue.js (interface utilisateur)
 │
-├── feature/...  ← chaque nouvelle fonctionnalité (créée par les développeurs)
+├── 📁 tests/                                # Tests d’intégration et de bout en bout
 │
-├── fix/...      ← corrections de bogues
+├── 📁 docs/                                 # Documentation (guides, stratégies, rapports)
 │
-└── hotfix/...   ← correctifs urgents en production
+├── 📁 scripts/                              # Scripts utilitaires (déploiement, maintenance)
+│
+├── 📄 docker-compose.yml                    # Orchestration Docker des microservices
+├── 📄 .gitignore                            # Liste des fichiers/dossiers à ignorer par Git
+├── 📄 README.md                             # Présentation générale du projet
+├── 📄 LICENSE                               # Informations de licence du projet
+└── 📄 CONTRIBUTING.md                       # Guide de contribution et conventions d’équipe
 
+#Stratégie de branches Git
+
+Nous appliquons le modèle Git Flow, adapté au développement agile (SCRUM) :
+
+Branche	Rôle
+main	Branche principale et stable — contient uniquement le code validé et prêt pour la production.
+develop	Branche d’intégration — regroupe toutes les nouvelles fonctionnalités avant livraison.
+feature/*	Branche de développement d’une nouvelle fonctionnalité issue de develop.
+➡️ Exemple : feature/add-auth-api.
+fix/*	Branche pour corriger un bug mineur ou une anomalie non critique.
+➡️ Exemple : fix/typo-in-dashboard.
+hotfix/*	Branche de correctif d’urgence issue de main pour les bugs critiques en production.
+➡️ Exemple : hotfix/fix-login-crash.
 
 # Qualité du code et CI/CD
 
