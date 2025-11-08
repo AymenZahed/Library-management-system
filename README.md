@@ -1,40 +1,3 @@
-# 📚 Library Management System
-
-Système de gestion de bibliothèque avec architecture microservices (Django + Vue.js)
-
-## 🏗️ Architecture
-
-- **Backend**: Django + Microservices
-- **Frontend**: Vue.js 
-- **Base de données**: MySQL
-- **CI/CD**: GitHub Actions + SonarQube
-
-## 📊 Qualité du Code
-
-[![SonarCloud](https://sonarcloud.io/images/project_badges/sonarcloud-white.svg)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=coverage)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=bugs)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-
-## 🚀 Installation
-
-```bash
-# Back - end 
-cd backend
-pip install -r requirements.txt
-
-# Front - end 
-cd frontend
-npm install
-```
-
-
 
 // exemple :
 # Mini-Projet Agile – Gestion de bibliotheque
@@ -66,13 +29,13 @@ L’objectif est de développer une application web en appliquant la méthode **
 ---
 
 ## Technologies utilisées
-| Domaine  | Technologies |
-|----------|--------------|
-| Frontend |  Vue         |
-| Backend  | Django       |
-| Base de données | MySQL |
-| Tests unitaires | PyTest|
-| Outils DevOps | GitHub Actions, SonarQube, Jira |
+| Domaine         | Technologies |
+|-----------------|--------------|
+| Frontend        |  Vue         |
+| Backend         | Django       |
+| Base de données | MySQL        |
+| Tests unitaires | PyTest       |
+| Outils DevOps   | GitHub Actions, SonarQube, Jira |
 
 ---
 
@@ -94,16 +57,41 @@ L’objectif est de développer une application web en appliquant la méthode **
    ```bash
    python manage.py runserver
 
+
+
+#Arborescence Complète du Projet
+Library-Management-System/
+│
+├── 📁 backend/                              # Tous les microservices backend
+│   ├── 📁 api-gateway/                      # API Gateway
+│   ├── 📁 user-service/                     # Microservice Users
+│   ├── 📁 books-service/                    # Microservice Books
+│   ├── 📁 loans-service/                    # Microservice Loans
+│   ├── 📁 notifications-service/            # Microservice Notifications
+│   └── 📁 shared/                           # Code partagé (utils, configs)
+├── 📁 frontend/                             # Application Vue.js
+├── 📁 tests/                                # Tests d'intégration globaux
+├── 📁 docs/                                 # Documentation du projet
+├── 📁 scripts/                              # Scripts utilitaires
+├── 📄 docker-compose.yml                    # Configuration Docker Compose
+├── 📄 .gitignore                            # Fichiers à ignorer par Git
+├── 📄 README.md                             # Documentation principale
+├── 📄 LICENSE                               # Licence du projet
+└── 📄 CONTRIBUTING.md                       # Guide de contribution
+
+
 # Stratégie de branches
 Nous suivons le modèle Git Flow :
 
-main → code stable, prêt à être déployé.
-
-develop → branche d’intégration (pré-release).
-
-feature/* → une branche par nouvelle fonctionnalité.
-
-📘 Détails complets dans docs/BRANCH_STRATEGY.md
+main             ← toujours stable (prête pour la production)
+│
+├── develop      ← branche d’intégration de toutes les nouvelles fonctionnalités
+│
+├── feature/...  ← chaque nouvelle fonctionnalité (créée par les développeurs)
+│
+├── fix/...      ← corrections de bogues
+│
+└── hotfix/...   ← correctifs urgents en production
 
 
 # Qualité du code et CI/CD
