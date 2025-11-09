@@ -1,3 +1,62 @@
+# ==========================================
+# 🧩 FRONTEND (Vue.js)
+# ==========================================
+node_modules/
+dist/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+.pnp.*
+.pnp.js
+.cache/
+.vuepress/dist
+*.tsbuildinfo
+coverage/
+
+# ==========================================
+# 🧾 DOCUMENTATION & BUILD OUTPUTS
+# ==========================================
+docs/_build/
+docs/.cache/
+scripts/*.log
+scripts/output/
+*.bak
+*.tmp
+
+# ==========================================
+# ⚙️ CI/CD & SONARQUBE
+# ==========================================
+.sonar/
+.sonarcloud/
+sonar-report.json
+coverage.xml
+htmlcov/
+reports/
+artifacts/
+*.coverage
+
+# ==========================================
+# 🧱 PROJECT ENV FILES
+# ==========================================
+.env
+.env.*
+*.secret
+secrets.json
+
+# ==========================================
+# 🧠 EDITOR & SYSTEM FILES
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
