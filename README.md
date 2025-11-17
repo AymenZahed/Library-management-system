@@ -2,10 +2,12 @@
 
 > A modern microservices-based library management application built with Django and Vue.js
 
-[![SonarCloud](https://sonarcloud.io/images/project_badges/sonarcloud-white.svg)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=coverage)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system)
+[![SonarCloud](https://sonarcloud.io/images/project_badges/sonarcloud-white.svg)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=coverage)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
+>>>>>>> 688795c (modifer the file README.md)
 
 ---
 
@@ -109,12 +111,21 @@ We maintain high code quality standards through continuous monitoring:
 
 | Metric | Status |
 |--------|--------|
+<<<<<<< HEAD
 | **Bugs** | [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=bugs)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
 | **Code Smells** | [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
 | **Technical Debt** | [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
 | **Duplicated Lines** | [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
 | **Lines of Code** | [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
 | **Reliability** | [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=AymenZahed_Library-management-system&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=AymenZahed_Library-management-system) |
+=======
+| **Bugs** | [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=bugs)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+| **Code Smells** | [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+| **Technical Debt** | [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+| **Duplicated Lines** | [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+| **Lines of Code** | [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+| **Reliability** | [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=MMA-PROJECT-V2_Library-Management-System&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System) |
+>>>>>>> 688795c (modifer the file README.md)
 
 ---
 
@@ -304,4 +315,8 @@ For questions or support, please open an issue on GitHub or contact the developm
 
 ⭐ Star this repository if you find it helpful!
 
+<<<<<<< HEAD
 </div>
+=======
+</div>
+>>>>>>> 688795c (modifer the file README.md)
