@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'corseheaders',
     'rest_framework',
     'users',
 ]
@@ -79,10 +78,10 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'users_db',
-        'USER': 'root',
-        'PASSWORD': '',
+        'USER': 'raymond',
+        'PASSWORD': 'nops',
         'HOST': 'localhost',
-        'PORT': '8001',
+        'PORT': '3307',
     }
 }
 
