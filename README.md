@@ -1,5 +1,7 @@
-# 📚 Library Management System
+# Library-Management-Systeme
+systeme de gestion de bibliotheque centralise
 
+<<<<<<< HEAD
 > A modern microservices-based library management application built with Django and Vue.js
 
 [![SonarCloud](https://sonarcloud.io/images/project_badges/sonarcloud-white.svg)](https://sonarcloud.io/summary/new_code?id=MMA-PROJECT-V2_Library-Management-System)
@@ -320,3 +322,5 @@ For questions or support, please open an issue on GitHub or contact the developm
 =======
 </div>
 >>>>>>> 688795c (modifer the file README.md)
+=======
+>>>>>>> develop
