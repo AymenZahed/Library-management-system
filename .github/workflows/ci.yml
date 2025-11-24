@@ -103,7 +103,7 @@ jobs:
             echo "⏱️  Tentative $i/60..."
             sleep 2
           done
-
+          
           # Verify MySQL is accessible
           mysql -h 127.0.0.1 -P 3306 -u root -proot -e "SHOW DATABASES;" || {
             echo "❌ MySQL n'est pas accessible"
@@ -146,7 +146,26 @@ jobs:
         working-directory: ./backend/${{ matrix.service }}
         run: |
           echo "🔧 Configuration des variables d'environnement..."
-
+          
+          # Get the absolute path
+          SERVICE_PATH=$(pwd)
+          echo "📁 Service path: $SERVICE_PATH"
+          
+          # Create pytest.ini to configure Django
+          cat > pytest.ini << 'EOF'
+[tool:pytest]
+DJANGO_SETTINGS_MODULE = config.settings
+python_files = tests.py test_*.py *_tests.py
+python_classes = Test*
+python_functions = test_*
+addopts = 
+    --strict-markers
+    --tb=short
+    --disable-warnings
+testpaths = .
+django_find_project = false
+EOF
+          
           # Create .env file for Django settings
           cat > .env << EOF
           # Database Configuration
@@ -156,29 +175,28 @@ jobs:
           DB_PASSWORD=root
           DB_HOST=127.0.0.1
           DB_PORT=3306
-
+          
           # Django Settings
           SECRET_KEY=test-secret-key-for-ci-pipeline
           DEBUG=True
           ALLOWED_HOSTS=localhost,127.0.0.1
-
+          
           # Test Configuration
           DJANGO_SETTINGS_MODULE=config.settings
-          PYTHONPATH=/home/runner/work/Library-management-system/Library-management-system/backend/${{ matrix.service }}
+          PYTHONPATH=${SERVICE_PATH}
           EOF
-
-          echo "✅ Fichier .env créé"
-
-          # Export to environment
-          export DB_ENGINE=django.db.backends.mysql
-          export DB_NAME=library_test
-          export DB_USER=root
-          export DB_PASSWORD=root
-          export DB_HOST=127.0.0.1
-          export DB_PORT=3306
-          export SECRET_KEY=test-secret-key-for-ci-pipeline
-          export DEBUG=True
-          export DJANGO_SETTINGS_MODULE=config.settings
+          
+          echo "✅ Fichiers de configuration créés"
+          
+          # Verify config module exists
+          if [ -d "config" ]; then
+            echo "✅ Module config trouvé"
+            ls -la config/
+          else
+            echo "⚠️ Module config non trouvé!"
+            echo "📁 Structure du service:"
+            ls -la
+          fi
 
       - name: 🔍 Vérification de la connexion MySQL
         working-directory: ./backend/${{ matrix.service }}
@@ -187,7 +205,7 @@ jobs:
           python << EOF
           import os
           import MySQLdb
-
+          
           try:
               conn = MySQLdb.connect(
                   host='127.0.0.1',
@@ -218,12 +236,16 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           SECRET_KEY: test-secret-key-for-ci-pipeline
-          DJANGO_SETTINGS_MODULE: config.settings
         run: |
           echo "🗄️ Exécution des migrations Django..."
-
+          
+          # Set Python path
+          export PYTHONPATH=$(pwd):$PYTHONPATH
+          export DJANGO_SETTINGS_MODULE=config.settings
+          
           # Check if manage.py exists
           if [ -f "manage.py" ]; then
+            echo "✅ manage.py trouvé"
             python manage.py makemigrations --noinput || echo "⚠️ Pas de nouvelles migrations"
             python manage.py migrate --noinput || echo "⚠️ Migration échouée"
             echo "✅ Migrations appliquées"
@@ -241,11 +263,27 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           SECRET_KEY: test-secret-key-for-ci-pipeline
-          DJANGO_SETTINGS_MODULE: config.settings
           PYTHONDONTWRITEBYTECODE: 1
         run: |
           echo "🧪 LANCEMENT DES TESTS POUR ${{ matrix.service }}"
           echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
+          
+          # Set Python path to current directory
+          export PYTHONPATH=$(pwd):$PYTHONPATH
+          export DJANGO_SETTINGS_MODULE=config.settings
+          
+          echo "📁 PYTHONPATH: $PYTHONPATH"
+          echo "📁 Working directory: $(pwd)"
+          
+          # Verify config module
+          python -c "import sys; sys.path.insert(0, '.'); import config.settings; print('✅ Config module importé')" || {
+            echo "❌ Impossible d'importer config.settings"
+            echo "📁 Contenu du répertoire:"
+            ls -la
+            echo "📁 Contenu de config/:"
+            ls -la config/ 2>/dev/null || echo "config/ n'existe pas"
+            exit 1
+          }
 
           # Find test files
           TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
@@ -320,7 +358,7 @@ jobs:
 
           # Find all coverage XML files
           COVERAGE_FILES=$(find coverage-reports -name "coverage_*.xml" -o -name "coverage.xml" 2>/dev/null)
-
+          
           if [ -n "$COVERAGE_FILES" ]; then
             echo "📄 Fichiers de couverture trouvés:"
             echo "$COVERAGE_FILES"
@@ -368,7 +406,7 @@ jobs:
         run: |
           echo "📁 Contenu du workspace:"
           ls -la
-
+          
           if [ -f "coverage.xml" ]; then
             echo "✅ coverage.xml trouvé"
             head -n 5 coverage.xml
@@ -376,7 +414,7 @@ jobs:
             echo "⚠️ coverage.xml manquant - création d'un rapport minimal"
             echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
-
+          
           echo ""
           echo "📋 Type d'analyse:"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
