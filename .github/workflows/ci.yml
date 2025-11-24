@@ -238,7 +238,7 @@ jobs:
           i=1
           for file in coverage.xml; do
             if [ $i -gt 1 ]; then
-              mv "$file" "coverage-$i.xml"
+              mv "$file" "coverage-$i.xml" 2>/dev/null || true
             fi
             ((i++))
           done
@@ -268,6 +268,8 @@ jobs:
             -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
             -Dsonar.test.exclusions=**/tests/**
             -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
 
       - name: 🧠 SonarQube Scan (Pull Request)
         if: github.event_name == 'pull_request'
@@ -287,17 +289,60 @@ jobs:
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
             -Dsonar.pullrequest.branch=${{ github.head_ref }}
             -Dsonar.pullrequest.base=${{ github.base_ref }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
 
-      - name: 📊 Résumé SonarQube
+      - name: ⚠️ Quality Gate Failed
+        if: failure()
         run: |
           echo ""
           echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          🔍 ANALYSE SONARQUBE TERMINÉE                  ║"
+          echo "║          ⚠️  QUALITY GATE FAILED                        ║"
+          echo "╚══════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "❌ Le code n'a pas passé les critères de qualité SonarQube"
+          echo ""
+          echo "📊 Problèmes possibles:"
+          echo "   • Code coverage trop faible"
+          echo "   • Bugs ou vulnerabilités détectés"
+          echo "   • Code smells ou duplications"
+          echo "   • Problèmes de sécurité"
+          echo ""
+          echo "🔗 Consultez le rapport détaillé sur SonarCloud:"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "   https://sonarcloud.io/project/pull_requests_list?id=MMA-PROJECT-V2_Library-Management-System"
+          else
+            echo "   https://sonarcloud.io/dashboard?id=AymenZahed_Library-management-system"
+          fi
+          echo ""
+          echo "💡 Actions recommandées:"
+          echo "   1. Vérifier les issues sur SonarCloud"
+          echo "   2. Corriger les bugs et vulnérabilités critiques"
+          echo "   3. Améliorer la couverture de tests"
+          echo "   4. Refactoriser le code avec des code smells"
+          echo ""
+          
+          # Ne pas faire échouer le pipeline en développement
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "⚠️  Mode développement: le pipeline continue malgré l'échec du Quality Gate"
+            exit 0
+          else
+            echo "❌ Le pipeline est interrompu (branche: ${{ github.ref_name }})"
+            exit 1
+          fi
+
+      - name: 📊 Résumé SonarQube
+        if: success()
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║          ✅ ANALYSE SONARQUBE RÉUSSIE                   ║"
           echo "╚══════════════════════════════════════════════════════════╝"
           echo "📊 Métriques analysées:"
           echo "   • Couverture de code (tous services)"
           echo "   • Qualité et sécurité du code"
           echo "   • Code smells et duplications"
+          echo "   • Quality Gate: PASSED ✅"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "   • Décoration de la PR #${{ github.event.pull_request.number }}"
           fi
@@ -323,7 +368,7 @@ jobs:
   pipeline-summary:
     name: 📋 Résumé du Pipeline
     runs-on: ubuntu-latest
-    needs: [initiation, discover-services, tests-unitaires]
+    needs: [initiation, discover-services, tests-unitaires, sonar-analysis]
     if: always()
 
     steps:
@@ -344,15 +389,38 @@ jobs:
           echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
           echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
           echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
+          
+          # Afficher le statut SonarQube si exécuté
+          if [[ "${{ needs.sonar-analysis.result }}" != "" ]]; then
+            echo "   4️⃣  SonarQube: ${{ needs.sonar-analysis.result }}"
+          fi
+          
           echo ""
 
+          # Vérifier si les tests ont réussi
           if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
-            echo "🎉 PIPELINE RÉUSSI! Tests MySQL validés pour tous les services."
-            if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/main" ]]; then
-              echo "ℹ️  Note: Créez une PR vers main pour analyse SonarQube complète"
+            echo "🎉 TESTS RÉUSSIS! Tous les services passent les tests unitaires."
+            
+            # Avertissement si SonarQube a échoué
+            if [[ "${{ needs.sonar-analysis.result }}" == "failure" ]]; then
+              echo ""
+              echo "⚠️  ATTENTION: Quality Gate SonarQube FAILED"
+              echo "   📊 Consultez https://sonarcloud.io pour les détails"
+              echo "   💡 Corrigez les problèmes de qualité avant le merge"
+              
+              # Fail seulement sur main
+              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+                echo ""
+                echo "❌ Pipeline échoué à cause du Quality Gate (branche main)"
+                exit 1
+              else
+                echo ""
+                echo "✅ Pipeline continue (branche de développement)"
+              fi
             fi
+            
             exit 0
           else
-            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des jobs."
+            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des tests."
             exit 1
           fi
