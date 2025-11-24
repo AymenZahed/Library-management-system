@@ -46,6 +46,7 @@ class User(AbstractBaseUser , ):
     phone = models.CharField(max_length=20, blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='MEMBER')
     max_loans = models.IntegerField(default=5)
+    date_joined = models.DateTimeField(auto_now_add=True)
     
     # Link to custom groups (not Django's built-in groups)
     # Using string reference for forward declaration
