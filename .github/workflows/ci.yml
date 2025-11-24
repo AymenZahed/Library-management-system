@@ -116,7 +116,7 @@ jobs:
         run: |
           echo "⏳ Attente du démarrage de MySQL..."
           for i in {1..30}; do
-            mysqladmin --protocol=TCP ping -h127.0.0.1 -proot 2>/dev/null && {
+            mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null && {
               echo "✅ MySQL est prêt!"
               break
             }
@@ -124,11 +124,13 @@ jobs:
             sleep 2
           done
           
-          # Vérification finale
-          mysql -h127.0.0.1 -proot -e "SHOW DATABASES;" || {
+          # Vérification finale avec user explicite
+          mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;" 2>/dev/null || {
             echo "❌ MySQL n'est pas accessible"
             exit 1
           }
+          
+          echo "✅ Connexion MySQL vérifiée"
 
       - name: 🧪 Exécuter les tests
         working-directory: ./backend/${{ matrix.service }}
