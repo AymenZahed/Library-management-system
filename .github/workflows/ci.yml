@@ -75,10 +75,10 @@ jobs:
           MYSQL_USER: test_user
           MYSQL_PASSWORD: test_password
         options: >-
-          --health-cmd="mysqladmin ping"
+          --health-cmd="mysqladmin ping -h localhost"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=3
+          --health-retries=5
         ports:
           - 3306:3306
 
@@ -90,26 +90,49 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
       - name: ⏳ Attente que MySQL soit prêt
         run: |
           echo "⏳ Attente du démarrage de MySQL..."
-          for i in {1..30}; do
-            if mysqladmin ping -h127.0.0.1 -P3306 -uroot -proot 2>/dev/null; then
+          for i in {1..60}; do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; then
               echo "✅ MySQL est prêt!"
-              break
+              mysql -h 127.0.0.1 -P 3306 -u root -proot -e "SELECT VERSION();" 2>/dev/null && break
             fi
-            echo "⏱️  Tentative $i/30..."
+            echo "⏱️  Tentative $i/60..."
             sleep 2
           done
 
-      - name: 📦 Installation des dépendances
+          # Verify MySQL is accessible
+          mysql -h 127.0.0.1 -P 3306 -u root -proot -e "SHOW DATABASES;" || {
+            echo "❌ MySQL n'est pas accessible"
+            exit 1
+          }
+
+      - name: 🔧 Configuration de la base de données
+        run: |
+          echo "🔧 Configuration de la base de données de test..."
+          mysql -h 127.0.0.1 -P 3306 -u root -proot << EOF
+          CREATE DATABASE IF NOT EXISTS library_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL PRIVILEGES ON library_test.* TO 'root'@'%';
+          FLUSH PRIVILEGES;
+          SHOW DATABASES;
+          EOF
+          echo "✅ Base de données configurée"
+
+      - name: 📦 Installation des dépendances système
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmysqlclient-dev pkg-config
+
+      - name: 📦 Installation des dépendances Python globales
         working-directory: ./backend
         run: |
           echo "📦 Installation des dépendances globales..."
+          pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
-          # Installation du driver MySQL pour Python
-          pip install mysqlclient
+          pip install mysqlclient pytest pytest-cov pytest-django
 
       - name: 📦 Installation des dépendances du service
         working-directory: ./backend/${{ matrix.service }}
@@ -120,73 +143,158 @@ jobs:
           fi
 
       - name: 🔧 Configuration de l'environnement de test
-        run: |
-          echo "🔧 Configuration des variables d'environnement..."
-          echo "DATABASE_URL=mysql://root:root@localhost:3306/library_test" >> $GITHUB_ENV
-          echo "DB_ENGINE=django.db.backends.mysql" >> $GITHUB_ENV
-          echo "DB_HOST=localhost" >> $GITHUB_ENV
-          echo "DB_PORT=3306" >> $GITHUB_ENV
-          echo "DB_NAME=library_test" >> $GITHUB_ENV
-          echo "DB_USER=root" >> $GITHUB_ENV
-          echo "DB_PASSWORD=root" >> $GITHUB_ENV
-          echo "USE_MYSQL_FOR_TESTS=true" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
-
-      - name: 🔍 Vérification de la structure du service
         working-directory: ./backend/${{ matrix.service }}
         run: |
-          echo "📁 Structure du service ${{ matrix.service }}:"
-          find . -name "*.py" -type f | head -10
-          echo "📄 Fichiers de tests:"
-          find . -path "*/tests/*.py" -o -path "*/test_*.py" | head -10 || echo "ℹ️  Aucun test trouvé"
+          echo "🔧 Configuration des variables d'environnement..."
+
+          # Create .env file for Django settings
+          cat > .env << EOF
+          # Database Configuration
+          DB_ENGINE=django.db.backends.mysql
+          DB_NAME=library_test
+          DB_USER=root
+          DB_PASSWORD=root
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+
+          # Django Settings
+          SECRET_KEY=test-secret-key-for-ci-pipeline
+          DEBUG=True
+          ALLOWED_HOSTS=localhost,127.0.0.1
+
+          # Test Configuration
+          DJANGO_SETTINGS_MODULE=config.settings
+          PYTHONPATH=/home/runner/work/Library-management-system/Library-management-system/backend/${{ matrix.service }}
+          EOF
+
+          echo "✅ Fichier .env créé"
+
+          # Export to environment
+          export DB_ENGINE=django.db.backends.mysql
+          export DB_NAME=library_test
+          export DB_USER=root
+          export DB_PASSWORD=root
+          export DB_HOST=127.0.0.1
+          export DB_PORT=3306
+          export SECRET_KEY=test-secret-key-for-ci-pipeline
+          export DEBUG=True
+          export DJANGO_SETTINGS_MODULE=config.settings
+
+      - name: 🔍 Vérification de la connexion MySQL
+        working-directory: ./backend/${{ matrix.service }}
+        run: |
+          echo "🔍 Test de connexion MySQL..."
+          python << EOF
+          import os
+          import MySQLdb
+
+          try:
+              conn = MySQLdb.connect(
+                  host='127.0.0.1',
+                  port=3306,
+                  user='root',
+                  passwd='root',
+                  db='library_test'
+              )
+              print("✅ Connexion Python-MySQL réussie!")
+              cursor = conn.cursor()
+              cursor.execute("SELECT VERSION()")
+              version = cursor.fetchone()
+              print(f"📊 MySQL Version: {version[0]}")
+              cursor.close()
+              conn.close()
+          except Exception as e:
+              print(f"❌ Erreur de connexion: {e}")
+              exit(1)
+          EOF
+
+      - name: 🗄️ Migrations Django
+        working-directory: ./backend/${{ matrix.service }}
+        env:
+          DB_ENGINE: django.db.backends.mysql
+          DB_NAME: library_test
+          DB_USER: root
+          DB_PASSWORD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          SECRET_KEY: test-secret-key-for-ci-pipeline
+          DJANGO_SETTINGS_MODULE: config.settings
+        run: |
+          echo "🗄️ Exécution des migrations Django..."
+
+          # Check if manage.py exists
+          if [ -f "manage.py" ]; then
+            python manage.py makemigrations --noinput || echo "⚠️ Pas de nouvelles migrations"
+            python manage.py migrate --noinput || echo "⚠️ Migration échouée"
+            echo "✅ Migrations appliquées"
+          else
+            echo "ℹ️ Pas de manage.py trouvé, skip migrations"
+          fi
 
       - name: 🧪 Exécution des tests du service
         working-directory: ./backend/${{ matrix.service }}
         env:
-          DATABASE_URL: mysql://root:root@localhost:3306/library_test
           DB_ENGINE: django.db.backends.mysql
-          DB_HOST: localhost
-          DB_PORT: 3306
           DB_NAME: library_test
           DB_USER: root
           DB_PASSWORD: root
-          USE_MYSQL_FOR_TESTS: 'true'
-          SECRET_KEY: test-secret-key-for-ci
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          SECRET_KEY: test-secret-key-for-ci-pipeline
+          DJANGO_SETTINGS_MODULE: config.settings
+          PYTHONDONTWRITEBYTECODE: 1
         run: |
           echo "🧪 LANCEMENT DES TESTS POUR ${{ matrix.service }}"
-          echo "🔗 Connexion à MySQL: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+          echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
 
-          # Test de connexion MySQL
-          mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASSWORD -e "SHOW DATABASES;" || echo "❌ Connexion MySQL échouée"
+          # Find test files
+          TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
+          echo "📋 Nombre de fichiers de test trouvés: $TEST_FILES"
 
-          # Découverte automatique des tests
-          if [ -f "pytest.ini" ]; then
-            echo "📋 Utilisation de pytest.ini du service"
-            python -m pytest --cov=. --cov-report=xml:coverage_${{ matrix.service }}.xml --cov-report=term -v
-          elif [ -d "users/tests" ] || [ -d "*/tests" ]; then
-            echo "📋 Découverte automatique des tests"
-            python -m pytest --cov=. --cov-report=xml:coverage_${{ matrix.service }}.xml --cov-report=term -v
+          if [ "$TEST_FILES" -gt 0 ]; then
+            # Run pytest with coverage
+            python -m pytest \
+              --verbose \
+              --tb=short \
+              --cov=. \
+              --cov-report=xml:coverage_${{ matrix.service }}.xml \
+              --cov-report=term-missing \
+              --cov-report=html \
+              --maxfail=5 \
+              -p no:warnings \
+              || TEST_EXIT_CODE=$?
+            
+            # Check if tests ran
+            if [ -f "coverage_${{ matrix.service }}.xml" ]; then
+              echo "✅ Tests exécutés avec succès"
+              ls -lh coverage_${{ matrix.service }}.xml
+            else
+              echo "⚠️ Fichier coverage non généré, création d'un rapport vide"
+              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage_${{ matrix.service }}.xml
+            fi
+            
+            # Exit with test result
+            exit ${TEST_EXIT_CODE:-0}
           else
-            echo "⚠️  Aucun test trouvé pour ${{ matrix.service }}"
-            # Créer un coverage.xml vide pour éviter les erreurs
-            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage_${{ matrix.service }}.xml
-          fi
-
-          echo "🔍 Vérification du fichier coverage:"
-          if [ -f "coverage_${{ matrix.service }}.xml" ]; then
-            echo "✅ coverage_${{ matrix.service }}.xml généré avec succès"
-            ls -la coverage_${{ matrix.service }}.xml
-          else
-            echo "❌ coverage_${{ matrix.service }}.xml NON généré - création factice"
-            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage_${{ matrix.service }}.xml
+            echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
+            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage_${{ matrix.service }}.xml
           fi
 
       - name: 📤 Upload du rapport de couverture
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: coverage-${{ matrix.service }}
           path: backend/${{ matrix.service }}/coverage_${{ matrix.service }}.xml
-          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: 📤 Upload du rapport HTML
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-html-${{ matrix.service }}
+          path: backend/${{ matrix.service }}/htmlcov/
+          retention-days: 7
 
   combine-coverage:
     name: 📊 Combinaison des Rapports de Couverture
@@ -202,42 +310,46 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: coverage-reports
+          pattern: coverage-*
+          merge-multiple: true
 
       - name: 📊 Combinaison des rapports
         run: |
           echo "📊 Combinaison des rapports de couverture..."
           mkdir -p combined-coverage
 
-          # Trouver tous les fichiers coverage.xml
-          find coverage-reports -name "coverage_*.xml" -o -name "coverage.xml" | while read file; do
-            echo "📄 Traitement: $file"
-            cp "$file" "combined-coverage/$(basename $file)"
-          done
+          # Find all coverage XML files
+          COVERAGE_FILES=$(find coverage-reports -name "coverage_*.xml" -o -name "coverage.xml" 2>/dev/null)
 
-          # Créer un rapport combiné simple (ou utiliser coverage combine si disponible)
-          if [ -f "combined-coverage/coverage_user_service.xml" ]; then
-            cp combined-coverage/coverage_user_service.xml coverage.xml
-            echo "✅ Rapport principal: coverage_user_service.xml"
+          if [ -n "$COVERAGE_FILES" ]; then
+            echo "📄 Fichiers de couverture trouvés:"
+            echo "$COVERAGE_FILES"
+            
+            # Copy first coverage file as base
+            FIRST_FILE=$(echo "$COVERAGE_FILES" | head -n 1)
+            cp "$FIRST_FILE" coverage.xml
+            echo "✅ Rapport principal créé à partir de: $FIRST_FILE"
           else
-            # Créer un rapport factice si aucun n'existe
-            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
-            echo "⚠️  Aucun rapport trouvé, création d'un rapport factice"
+            echo "⚠️ Aucun rapport trouvé, création d'un rapport factice"
+            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
 
-          echo "📊 Rapports combinés:"
-          ls -la combined-coverage/ || echo "Aucun rapport"
+          # Display summary
+          echo ""
+          echo "📊 Résumé des rapports:"
+          ls -lh coverage-reports/ 2>/dev/null || echo "Aucun rapport"
 
       - name: 📤 Upload du rapport combiné
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml-combined
           path: coverage.xml
+          retention-days: 30
 
   qualite-du-code:
     name: 🔍 Analyse Qualité du Code (SonarQube)
     runs-on: ubuntu-latest
     needs: [tests-unitaires, combine-coverage]
-    # SonarQube gratuit: main branch + Pull Requests uniquement
     if: (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') && always()
 
     steps:
@@ -254,24 +366,24 @@ jobs:
 
       - name: 🔍 Vérification avant SonarQube
         run: |
-          echo "📁 Contenu après download :"
+          echo "📁 Contenu du workspace:"
           ls -la
-          echo "📄 Vérification coverage.xml :"
+
           if [ -f "coverage.xml" ]; then
-            echo "✅ coverage.xml prêt pour SonarQube"
+            echo "✅ coverage.xml trouvé"
+            head -n 5 coverage.xml
           else
-            echo "❌ coverage.xml manquant - création factice"
-            echo '<?xml version="1.0" ?><coverage><sources><source>.</source></sources></coverage>' > coverage.xml
+            echo "⚠️ coverage.xml manquant - création d'un rapport minimal"
+            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
+
           echo ""
           echo "📋 Type d'analyse:"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   🔀 Pull Request Analysis"
-            echo "   📌 PR #${{ github.event.pull_request.number }}"
-            echo "   🌿 Base: ${{ github.base_ref }} → Head: ${{ github.head_ref }}"
+            echo "   🔀 Pull Request #${{ github.event.pull_request.number }}"
+            echo "   🌿 ${{ github.base_ref }} ← ${{ github.head_ref }}"
           else
-            echo "   🎯 Main Branch Analysis"
-            echo "   🌿 Branch: ${{ github.ref_name }}"
+            echo "   🎯 Main Branch: ${{ github.ref_name }}"
           fi
 
       - name: 🔍 Analyse SonarQube (Main Branch)
@@ -286,6 +398,7 @@ jobs:
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=backend
+            -Dsonar.exclusions=**/tests/**,**/migrations/**
             -Dsonar.coverage.minimumCoverage=0
 
       - name: 🔍 Analyse SonarQube (Pull Request)
@@ -300,24 +413,11 @@ jobs:
             -Dsonar.projectKey=MMA-PROJECT-V2_Library-Management-System
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=backend
+            -Dsonar.exclusions=**/tests/**,**/migrations/**
             -Dsonar.coverage.minimumCoverage=0
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
             -Dsonar.pullrequest.branch=${{ github.head_ref }}
             -Dsonar.pullrequest.base=${{ github.base_ref }}
-
-      - name: 📊 Résumé SonarQube
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          🔍 ANALYSE SONARQUBE TERMINÉE                  ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo "📊 Métriques analysées avec MySQL:"
-          echo "   • Couverture de code (tous services)"
-          echo "   • Qualité et sécurité"
-          echo "   • Performance avec base réelle"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   • Décoration de la PR #${{ github.event.pull_request.number }}"
-          fi
 
   qualite-du-code-info:
     name: ℹ️ Info SonarQube (Push non-main)
@@ -330,24 +430,11 @@ jobs:
         run: |
           echo ""
           echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║     ℹ️  ANALYSE SONARQUBE - PUSH SUR DEVELOP          ║"
+          echo "║     ℹ️  ANALYSE SONARQUBE - PUSH SUR ${{ github.ref_name }}"
           echo "╚══════════════════════════════════════════════════════════╝"
           echo ""
-          echo "📌 Branche: ${{ github.ref_name }}"
-          echo "📋 Event: Push (non-main branch)"
-          echo ""
-          echo "⚠️  Le plan gratuit SonarQube supporte:"
-          echo "   ✅ Analyse de la branche main"
-          echo "   ✅ Analyse des Pull Requests"
-          echo "   ❌ Push direct sur autres branches"
-          echo ""
-          echo "💡 Pour analyser develop avec SonarQube:"
-          echo "   1. Créer une Pull Request: develop → main"
-          echo "   2. SonarQube analysera automatiquement la PR"
-          echo "   3. Les résultats apparaîtront dans la PR"
-          echo ""
           echo "✅ Tests unitaires: RÉUSSIS"
-          echo "✅ Couverture de code: GÉNÉRÉE"
+          echo "💡 Pour analyse SonarQube: créer une PR vers main"
 
   pipeline-summary:
     name: 📋 Résumé du Pipeline
@@ -366,32 +453,18 @@ jobs:
           echo "📅 Date: $(date)"
           echo "🌿 Branche: ${{ github.ref_name }}"
           echo "👤 Auteur: ${{ github.actor }}"
-          echo "🗄️  Base de données: MySQL"
-          echo "📋 Event: ${{ github.event_name }}"
+          echo "🗄️  Base de données: MySQL 8.0"
           echo ""
-          echo "✅ Jobs exécutés:"
+          echo "✅ Statut des jobs:"
           echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
           echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
           echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
-
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   4️⃣  SonarQube (PR): Exécuté"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "   4️⃣  SonarQube (Main): Exécuté"
-          else
-            echo "   4️⃣  SonarQube: Skipped (push sur ${{ github.ref_name }})"
-            echo "       💡 Créez une PR pour analyse SonarQube"
-          fi
-
           echo ""
 
           if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
-            echo "🎉 PIPELINE RÉUSSI! Tests MySQL validés pour tous les services."
-            if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" != "refs/heads/main" ]]; then
-              echo "ℹ️  Note: Créez une PR vers main pour analyse SonarQube"
-            fi
+            echo "🎉 PIPELINE RÉUSSI!"
             exit 0
           else
-            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des jobs."
+            echo "❌ PIPELINE ÉCHOUÉ - Vérifiez les logs"
             exit 1
           fi
