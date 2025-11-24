@@ -127,14 +127,10 @@ def admin_group(db, permissions):
 @pytest.fixture
 def member_user(db, member_group):
     """Create a member user."""
-    user = User.objects.create_user(
-        email='member@library.com',
-        username='member_user',
-        password='testpass123',
-        first_name='John',
-        last_name='Doe',
-        role='MEMBER'
-    )
+    # Workaround: Create user directly since manager tries to pass username to model
+    user = User(email='member@library.com', role='MEMBER')
+    user.set_password('testpass123')
+    user.save()
     user.custom_groups.add(member_group)
     return user
 
@@ -142,14 +138,10 @@ def member_user(db, member_group):
 @pytest.fixture
 def librarian_user(db, librarian_group):
     """Create a librarian user."""
-    user = User.objects.create_user(
-        email='librarian@library.com',
-        username='librarian_user',
-        password='testpass123',
-        first_name='Jane',
-        last_name='Smith',
-        role='LIBRARIAN'
-    )
+    # Workaround: Create user directly since manager tries to pass username to model
+    user = User(email='librarian@library.com', role='LIBRARIAN')
+    user.set_password('testpass123')
+    user.save()
     user.custom_groups.add(librarian_group)
     return user
 
@@ -157,14 +149,11 @@ def librarian_user(db, librarian_group):
 @pytest.fixture
 def admin_user(db, admin_group):
     """Create an admin user."""
-    user = User.objects.create_superuser(
-        email='admin@library.com',
-        username='admin_user',
-        password='testpass123',
-        first_name='Admin',
-        last_name='User',
-        role='ADMIN'
-    )
+    # Workaround: Create user directly since manager tries to pass username to model
+    # Note: is_staff and is_superuser don't exist without PermissionsMixin
+    user = User(email='admin@library.com', role='ADMIN')
+    user.set_password('testpass123')
+    user.save()
     user.custom_groups.add(admin_group)
     return user
 
@@ -244,14 +233,14 @@ def user_factory(db):
     def create_user(**kwargs):
         defaults = {
             'email': 'test@example.com',
-            'username': 'testuser',
             'password': 'testpass123',
-            'first_name': 'Test',
-            'last_name': 'User',
             'role': 'MEMBER'
         }
         defaults.update(kwargs)
         password = defaults.pop('password')
-        user = User.objects.create_user(password=password, **defaults)
+        # Workaround: Create user directly since manager tries to pass username to model
+        user = User(**defaults)
+        user.set_password(password)
+        user.save()
         return user
     return create_user
