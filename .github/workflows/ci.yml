@@ -291,13 +291,12 @@ jobs:
             -Dsonar.pullrequest.base=${{ github.base_ref }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
-
-# Disable CSRF warnings for specific files that implement JWT authentication
-sonar.issue.ignore.multicriteria=e1
-
-# Ignore CSRF issues in views.py because JWT is used instead of sessions
-sonar.issue.ignore.multicriteria.e1.ruleKey=python:S5122
-sonar.issue.ignore.multicriteria.e1.resourceKey=**/views.py
+            sonar.issue.ignore.multicriteria=e1
+            sonar.issue.ignore.multicriteria.e1.ruleKey=python:S5122
+            sonar.issue.ignore.multicriteria.e1.resourceKey=**/views.py
+            sonar.qualitygate.wait=true
+            sonar.qualitygate.timeout=300
+            
 
       - name: ⚠️ Quality Gate Failed
         if: failure()
