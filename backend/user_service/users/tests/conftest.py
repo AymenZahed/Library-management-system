@@ -1,6 +1,5 @@
 """
 Pytest configuration and fixtures for user service tests.
-ONLY for user_service - no dependencies on other services.
 """
 
 import pytest
@@ -127,10 +126,13 @@ def admin_group(db, permissions):
 @pytest.fixture
 def member_user(db, member_group):
     """Create a member user."""
-    # Workaround: Create user directly since manager tries to pass username to model
-    user = User(email='member@library.com', role='MEMBER')
-    user.set_password('testpass123')
-    user.save()
+    user = User.objects.create_user(
+        email='member@library.com',
+        password='testpass123',
+        role='MEMBER',
+        first_name='Member',
+        last_name='User'
+    )
     user.custom_groups.add(member_group)
     return user
 
@@ -138,10 +140,13 @@ def member_user(db, member_group):
 @pytest.fixture
 def librarian_user(db, librarian_group):
     """Create a librarian user."""
-    # Workaround: Create user directly since manager tries to pass username to model
-    user = User(email='librarian@library.com', role='LIBRARIAN')
-    user.set_password('testpass123')
-    user.save()
+    user = User.objects.create_user(
+        email='librarian@library.com',
+        password='testpass123',
+        role='LIBRARIAN',
+        first_name='Librarian',
+        last_name='User'
+    )
     user.custom_groups.add(librarian_group)
     return user
 
@@ -149,11 +154,12 @@ def librarian_user(db, librarian_group):
 @pytest.fixture
 def admin_user(db, admin_group):
     """Create an admin user."""
-    # Workaround: Create user directly since manager tries to pass username to model
-    # Note: is_staff and is_superuser don't exist without PermissionsMixin
-    user = User(email='admin@library.com', role='ADMIN')
-    user.set_password('testpass123')
-    user.save()
+    user = User.objects.create_superuser(
+        email='admin@library.com',
+        password='testpass123',
+        first_name='Admin',
+        last_name='User'
+    )
     user.custom_groups.add(admin_group)
     return user
 
@@ -238,9 +244,6 @@ def user_factory(db):
         }
         defaults.update(kwargs)
         password = defaults.pop('password')
-        # Workaround: Create user directly since manager tries to pass username to model
-        user = User(**defaults)
-        user.set_password(password)
-        user.save()
+        user = User.objects.create_user(password=password, **defaults)
         return user
     return create_user
