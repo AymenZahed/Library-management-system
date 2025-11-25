@@ -10,6 +10,7 @@ from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
     RegisterSerializer, LoginSerializer
 )
+from django.views.decorators.csrf import csrf_exempt
 
 
 # ============================================
@@ -18,6 +19,7 @@ from .serializers import (
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def register(request):
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -40,6 +42,7 @@ def register(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def login_view(request):
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -62,6 +65,7 @@ def login_view(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])  # Other services call this
+@csrf_exempt
 def validate_token(request):
     """
     Validate JWT token and return user data with permissions.
@@ -119,6 +123,7 @@ def validate_token(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def check_permission(request):
     """
     Check if a user has specific permission(s).
@@ -182,6 +187,7 @@ def check_permission(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt
 def me(request):
     """Get current authenticated user with permissions."""
     return Response({
@@ -195,6 +201,7 @@ def me(request):
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt
 def user_profile(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     
