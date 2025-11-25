@@ -291,11 +291,7 @@ jobs:
             -Dsonar.pullrequest.base=${{ github.base_ref }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
-            sonar.issue.ignore.multicriteria=e1
-            sonar.issue.ignore.multicriteria.e1.ruleKey=python:S5122
-            sonar.issue.ignore.multicriteria.e1.resourceKey=**/views.py
-            sonar.qualitygate.wait=true
-            sonar.qualitygate.timeout=300
+            
             
 
       - name: ⚠️ Quality Gate Failed
