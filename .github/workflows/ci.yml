@@ -123,48 +123,24 @@ jobs:
             echo "⏱️  MySQL non prêt ($i/30)..."
             sleep 2
           done
-          
-          # Vérification finale avec user explicite
           mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;" 2>/dev/null || {
             echo "❌ MySQL n'est pas accessible"
             exit 1
           }
-          
           echo "✅ Connexion MySQL vérifiée"
 
       - name: 🧪 Exécuter les tests
         working-directory: ./backend/${{ matrix.service }}
         run: |
           echo "🧪 Lancement des tests pour ${{ matrix.service }}..."
-          echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
-          
-          # Trouver les tests
           TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
           echo "📋 Nombre de fichiers de test trouvés: $TEST_FILES"
-          
           if [ "$TEST_FILES" -gt 0 ]; then
-            # Exécuter pytest avec couverture
-            pytest -vv \
-              --disable-warnings \
-              --maxfail=1 \
-              --tb=short \
-              --cov=. \
-              --cov-report=xml:coverage.xml \
-              --cov-report=term-missing \
-              || TEST_EXIT_CODE=$?
-            
-            # Vérifier que le fichier coverage a été créé
-            if [ -f "coverage.xml" ]; then
-              echo "✅ Rapport de couverture généré"
-              ls -lh coverage.xml
-            else
-              echo "⚠️ Fichier coverage.xml non généré"
-              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
-            fi
-            
+            pytest -vv --disable-warnings --maxfail=1 --tb=short --cov=. \
+              --cov-report=xml:coverage.xml --cov-report=term-missing || TEST_EXIT_CODE=$?
+            [ -f "coverage.xml" ] || echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
             exit ${TEST_EXIT_CODE:-0}
           else
-            echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
             echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
 
@@ -184,22 +160,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: 📥 Télécharger tous les coverage
         uses: actions/download-artifact@v4
         with:
           path: coverage-reports
           pattern: coverage-*
           merge-multiple: true
-
       - name: 📊 Afficher les rapports téléchargés
         run: |
           echo "📊 Rapports de couverture téléchargés:"
           find coverage-reports -name "*.xml" -type f
-          echo ""
-          echo "📁 Structure complète:"
           ls -R coverage-reports/
-
       - name: 📤 Upload des rapports combinés
         uses: actions/upload-artifact@v4
         with:
@@ -207,77 +178,24 @@ jobs:
           path: coverage-reports/
           retention-days: 30
 
-  # SONARQUBE TEMPORAIREMENT DÉSACTIVÉ
-  # Décommentez cette section après avoir configuré SONAR_TOKEN dans GitHub Secrets
-  # sonar-analysis:
-  #   name: 🔍 Analyse SonarQube
-  #   runs-on: ubuntu-latest
-  #   needs: [tests-unitaires, combine-coverage]
-  #   if: false  # Désactivé temporairement
-
+  # SonarQube temporairement désactivé
   sonar-info:
     name: ℹ️ Info SonarQube (Désactivé)
     runs-on: ubuntu-latest
     needs: tests-unitaires
     if: github.event_name == 'push' || github.event_name == 'pull_request'
-
     steps:
       - name: ℹ️ Configuration SonarQube Requise
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║     ⚠️  SONARQUBE TEMPORAIREMENT DÉSACTIVÉ             ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo ""
-          echo "📌 Pour activer SonarQube:"
-          echo "   1. Créez un compte sur https://sonarcloud.io"
-          echo "   2. Générez un token: Account → Security → Generate Token"
-          echo "   3. Ajoutez le token dans GitHub:"
-          echo "      Settings → Secrets → Actions → New secret"
-          echo "      Nom: SONAR_TOKEN"
-          echo "   4. Décommentez la section sonar-analysis dans ci.yml"
-          echo ""
-          echo "📋 État actuel:"
-          echo "   ✅ Tests unitaires: RÉUSSIS"
-          echo "   ✅ Rapports de couverture: GÉNÉRÉS"
-          echo "   ⏸️  Analyse SonarQube: DÉSACTIVÉE"
+          echo "⚠️ SONARQUBE TEMPORAIREMENT DÉSACTIVÉ"
+          echo "💡 Pour l'activer, ajoutez le secret SONAR_TOKEN sur GitHub et décommentez la section sonar-analysis."
 
   pipeline-summary:
     name: 📋 Résumé du Pipeline
     runs-on: ubuntu-latest
     needs: [initiation, discover-services, tests-unitaires, sonar-info]
     if: always()
-
     steps:
       - name: 📊 Statut du Pipeline
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          📊 RÉSUMÉ DU PIPELINE CI/CD                    ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo ""
-          echo "📅 Date: $(date)"
-          echo "🌿 Branche: ${{ github.ref_name }}"
-          echo "👤 Auteur: ${{ github.actor }}"
-          echo "🗄️  Base de données: MySQL 8.0"
-          echo "📋 Event: ${{ github.event_name }}"
-          echo ""
-          echo "✅ Statut des jobs:"
-          echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
-          echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
-          echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
-          echo "   ℹ️  SonarQube: DÉSACTIVÉ (configuration requise)"
-          echo ""
-
-          # Vérifier si les tests ont réussi
-          if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
-            echo "🎉 PIPELINE RÉUSSI!"
-            echo "   ✅ Tous les tests unitaires passent"
-            echo "   ✅ Rapports de couverture générés"
-            echo ""
-            echo "💡 Prochaine étape: Configurer SonarQube pour l'analyse de qualité"
-            exit 0
-          else
-            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des tests."
-            exit 1
-          fi
+          echo "🎉 PIPELINE RÉUSSI si les tests unitaires passent et coverage généré"
