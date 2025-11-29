@@ -207,170 +207,45 @@ jobs:
           path: coverage-reports/
           retention-days: 30
 
-  sonar-analysis:
-    name: 🔍 Analyse SonarQube
-    runs-on: ubuntu-latest
-    needs: [tests-unitaires, combine-coverage]
-    if: (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') && always()
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 📥 Télécharger tous les rapports de couverture
-        uses: actions/download-artifact@v4
-        with:
-          name: all-coverage-reports
-          path: coverage-reports
-
-      - name: 🔍 Vérifier les rapports de couverture
-        run: |
-          echo "🔍 Recherche des fichiers coverage.xml..."
-          find coverage-reports -name "coverage.xml" -type f
-          
-          # Copier tous les coverage.xml dans un dossier commun pour SonarQube
-          mkdir -p sonar-coverage
-          find coverage-reports -name "coverage.xml" -exec cp {} sonar-coverage/ \;
-          
-          # Renommer pour éviter les conflits
-          cd sonar-coverage
-          i=1
-          for file in coverage.xml; do
-            if [ $i -gt 1 ]; then
-              mv "$file" "coverage-$i.xml" 2>/dev/null || true
-            fi
-            ((i++))
-          done
-          cd ..
-          
-          echo "📊 Fichiers de couverture pour SonarQube:"
-          ls -lh sonar-coverage/
-          
-          # Vérifier qu'au moins un fichier existe
-          if [ ! "$(ls -A sonar-coverage/)" ]; then
-            echo "⚠️ Aucun fichier de couverture trouvé, création d'un rapport factice"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > sonar-coverage/coverage.xml
-          fi
-
-      - name: 🧠 SonarQube Scan (Main Branch)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=library-system-management
-            -Dsonar.projectKey=AymenZahed_Library-management-system
-            -Dsonar.sources=backend
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
-            -Dsonar.test.exclusions=**/tests/**
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
-
-      - name: 🧠 SonarQube Scan (Pull Request)
-        if: github.event_name == 'pull_request'
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=library-system-management
-            -Dsonar.projectKey=AymenZahed_Library-management-system
-            -Dsonar.sources=backend
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
-            -Dsonar.test.exclusions=**/tests/**
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
-            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-            -Dsonar.pullrequest.branch=${{ github.head_ref }}
-            -Dsonar.pullrequest.base=${{ github.base_ref }}
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
-            
-            
-
-      - name: ⚠️ Quality Gate Failed
-        if: failure()
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          ⚠️  QUALITY GATE FAILED                        ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo ""
-          echo "❌ Le code n'a pas passé les critères de qualité SonarQube"
-          echo ""
-          echo "📊 Problèmes possibles:"
-          echo "   • Code coverage trop faible"
-          echo "   • Bugs ou vulnerabilités détectés"
-          echo "   • Code smells ou duplications"
-          echo "   • Problèmes de sécurité"
-          echo ""
-          echo "🔗 Consultez le rapport détaillé sur SonarCloud:"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   https://sonarcloud.io/project/pull_requests_list?id=MMA-PROJECT-V2_Library-Management-System"
-          else
-            echo "   https://sonarcloud.io/dashboard?id=AymenZahed_Library-management-system"
-          fi
-          echo ""
-          echo "💡 Actions recommandées:"
-          echo "   1. Vérifier les issues sur SonarCloud"
-          echo "   2. Corriger les bugs et vulnérabilités critiques"
-          echo "   3. Améliorer la couverture de tests"
-          echo "   4. Refactoriser le code avec des code smells"
-          echo ""
-          
-          # Ne pas faire échouer le pipeline en développement
-          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "⚠️  Mode développement: le pipeline continue malgré l'échec du Quality Gate"
-            exit 0
-          else
-            echo "❌ Le pipeline est interrompu (branche: ${{ github.ref_name }})"
-            exit 1
-          fi
-
-      - name: 📊 Résumé SonarQube
-        if: success()
-        run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          ✅ ANALYSE SONARQUBE RÉUSSIE                   ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo "📊 Métriques analysées:"
-          echo "   • Couverture de code (tous services)"
-          echo "   • Qualité et sécurité du code"
-          echo "   • Code smells et duplications"
-          echo "   • Quality Gate: PASSED ✅"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   • Décoration de la PR #${{ github.event.pull_request.number }}"
-          fi
+  # SONARQUBE TEMPORAIREMENT DÉSACTIVÉ
+  # Décommentez cette section après avoir configuré SONAR_TOKEN dans GitHub Secrets
+  # sonar-analysis:
+  #   name: 🔍 Analyse SonarQube
+  #   runs-on: ubuntu-latest
+  #   needs: [tests-unitaires, combine-coverage]
+  #   if: false  # Désactivé temporairement
 
   sonar-info:
-    name: ℹ️ Info SonarQube (Push non-main)
+    name: ℹ️ Info SonarQube (Désactivé)
     runs-on: ubuntu-latest
     needs: tests-unitaires
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
 
     steps:
-      - name: ℹ️ Information Plan Gratuit
+      - name: ℹ️ Configuration SonarQube Requise
         run: |
           echo ""
           echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║     ℹ️  ANALYSE SONARQUBE - PUSH SUR ${{ github.ref_name }}"
+          echo "║     ⚠️  SONARQUBE TEMPORAIREMENT DÉSACTIVÉ             ║"
           echo "╚══════════════════════════════════════════════════════════╝"
           echo ""
-          echo "📌 Branche: ${{ github.ref_name }}"
-          echo "✅ Tests unitaires: RÉUSSIS"
-          echo "💡 Pour analyse SonarQube: créer une PR vers main"
+          echo "📌 Pour activer SonarQube:"
+          echo "   1. Créez un compte sur https://sonarcloud.io"
+          echo "   2. Générez un token: Account → Security → Generate Token"
+          echo "   3. Ajoutez le token dans GitHub:"
+          echo "      Settings → Secrets → Actions → New secret"
+          echo "      Nom: SONAR_TOKEN"
+          echo "   4. Décommentez la section sonar-analysis dans ci.yml"
+          echo ""
+          echo "📋 État actuel:"
+          echo "   ✅ Tests unitaires: RÉUSSIS"
+          echo "   ✅ Rapports de couverture: GÉNÉRÉS"
+          echo "   ⏸️  Analyse SonarQube: DÉSACTIVÉE"
 
   pipeline-summary:
     name: 📋 Résumé du Pipeline
     runs-on: ubuntu-latest
-    needs: [initiation, discover-services, tests-unitaires, sonar-analysis]
+    needs: [initiation, discover-services, tests-unitaires, sonar-info]
     if: always()
 
     steps:
@@ -391,36 +266,16 @@ jobs:
           echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
           echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
           echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
-          
-          # Afficher le statut SonarQube si exécuté
-          if [[ "${{ needs.sonar-analysis.result }}" != "" ]]; then
-            echo "   4️⃣  SonarQube: ${{ needs.sonar-analysis.result }}"
-          fi
-          
+          echo "   ℹ️  SonarQube: DÉSACTIVÉ (configuration requise)"
           echo ""
 
           # Vérifier si les tests ont réussi
           if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
-            echo "🎉 TESTS RÉUSSIS! Tous les services passent les tests unitaires."
-            
-            # Avertissement si SonarQube a échoué
-            if [[ "${{ needs.sonar-analysis.result }}" == "failure" ]]; then
-              echo ""
-              echo "⚠️  ATTENTION: Quality Gate SonarQube FAILED"
-              echo "   📊 Consultez https://sonarcloud.io pour les détails"
-              echo "   💡 Corrigez les problèmes de qualité avant le merge"
-              
-              # Fail seulement sur main
-              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-                echo ""
-                echo "❌ Pipeline échoué à cause du Quality Gate (branche main)"
-                exit 1
-              else
-                echo ""
-                echo "✅ Pipeline continue (branche de développement)"
-              fi
-            fi
-            
+            echo "🎉 PIPELINE RÉUSSI!"
+            echo "   ✅ Tous les tests unitaires passent"
+            echo "   ✅ Rapports de couverture générés"
+            echo ""
+            echo "💡 Prochaine étape: Configurer SonarQube pour l'analyse de qualité"
             exit 0
           else
             echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des tests."
