@@ -41,23 +41,25 @@ jobs:
       # 5️⃣ Run tests for books_service
       - name: Run tests books_service
         run: |
-          cd backend/books_service
-          pytest --cov=books --cov-report=xml:../books_coverage.xml
-          cd ../../..
+         cd backend/books_service
+         pytest --cov=books --cov-append --cov-report=term --cov-report=xml:.coverage-books.xml
+         cd ../../..
 
       # 6️⃣ Run tests for user_service
       - name: Run tests user_service
         run: |
-          cd backend/user_service
-          pytest --cov=users --cov-report=xml:../user_coverage.xml
-          cd ../../..
+         cd backend/user_service
+         pytest --cov=users --cov-append --cov-report=term --cov-report=xml:.coverage-users.xml
+         cd ../../..
 
-      # 7️⃣ Combine coverage reports
-      - name: Combine coverage reports
+      # 7️⃣ Combine coverage reports (use .coverage data files)
+      - name: Combine coverage
         run: |
-          pip install coverage
-          coverage combine backend/books_coverage.xml backend/user_coverage.xml
-          coverage xml -o backend/coverage.xml
+         mv backend/books_service/.coverage backend/.coverage.books
+         mv backend/user_service/.coverage backend/.coverage.users
+         coverage combine backend/.coverage.books backend/.coverage.users
+         coverage xml -o backend/coverage.xml
+
 
       # 8️⃣ Upload combined coverage report
       - name: Upload coverage report
