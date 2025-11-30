@@ -25,71 +25,34 @@ jobs:
 
       - name: Install dependencies
         run: |
+          cd backend
           python -m pip install --upgrade pip
-          pip install -r backend/books_service/requirements.txt
-          pip install -r backend/user_service/requirements.txt
-          pip install pytest pytest-cov coverage
+          pip install -r books_service/requirements.txt
+          pip install -r user_service/requirements.txt
+          pip install pytest pytest-cov
 
-      - name: Run tests with coverage
+      - name: Run unified tests with coverage
         run: |
           cd backend
+          python -m pytest
 
-          # Create .coveragerc for proper coverage configuration
-          cat > .coveragerc << EOF
-          [run]
-          source = 
-            books_service/books
-            user_service/users
-          omit = 
-            */migrations/*
-            */tests/*
-            */__pycache__/*
-            */venv/*
-            *__init__.py
-            *settings.py
-            *asgi.py
-            *wsgi.py
-            *manage.py
-            *admin.py
-            *apps.py
-            *conftest.py
-
-          [report]
-          exclude_lines =
-            pragma: no cover
-            def __repr__
-            if self.debug:
-            if settings.DEBUG
-            raise AssertionError
-            raise NotImplementedError
-          EOF
-
-          # Run tests for books_service
-          cd books_service
-          coverage run --source=books -m pytest
-          cd ..
-
-          # Run tests for user_service  
-          cd user_service
-          coverage run --source=users -m pytest
-          cd ..
-
-          # Combine coverage from both services
-          coverage combine books_service/.coverage user_service/.coverage
-          coverage xml -o combined-coverage.xml
-
-          # Display coverage report for verification
-          coverage report
+      - name: Verify coverage file
+        run: |
+          cd backend
+          echo "=== Coverage File Generated ==="
+          ls -la coverage.xml
+          echo "=== Coverage Summary ==="
+          python -m coverage report
 
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectBaseDir: .
+          projectBaseDir: ./backend
           args: >
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.organization=library-system-management
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-            -Dsonar.python.coverage.reportPaths=backend/combined-coverage.xml
+            -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.qualitygate.wait=true
