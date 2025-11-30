@@ -26,5 +26,7 @@ exclude_lines =
     raise NotImplementedError
     @property
 
-[html]
-directory = htmlcov
+[paths]
+source =
+    books_service/books
+    user_service/users

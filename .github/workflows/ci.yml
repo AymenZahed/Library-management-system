@@ -29,19 +29,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r books_service/requirements.txt
           pip install -r user_service/requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov coverage
 
-      - name: Run unified tests with coverage
+      - name: Run books_service tests
+        run: |
+          cd backend/books_service
+          python -m pytest --cov=books --cov-append --cov-report=term --cov-report=xml:../coverage-books.xml
+
+      - name: Run user_service tests
+        run: |
+          cd backend/user_service
+          python -m pytest --cov=users --cov-append --cov-report=term --cov-report=xml:../coverage-users.xml
+
+      - name: Combine coverage reports
         run: |
           cd backend
-          python -m pytest
-
-      - name: Verify coverage file
-        run: |
-          cd backend
-          echo "=== Coverage File Generated ==="
-          ls -la coverage.xml
-          echo "=== Coverage Summary ==="
+          # Convert individual coverage files to combined format
+          python -m coverage combine --rcfile=.coveragerc coverage-books.xml coverage-users.xml
+          python -m coverage xml -o coverage.xml
           python -m coverage report
 
       - name: SonarCloud Scan
