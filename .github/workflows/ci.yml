@@ -13,46 +13,39 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
-      # 1️⃣ Checkout full repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      # 3️⃣ Install dependencies for books_service
       - name: Install books_service dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/books_service/requirements.txt
           pip install pytest pytest-cov coverage xmltodict
 
-      # 4️⃣ Install dependencies for user_service
       - name: Install user_service dependencies
         run: |
           pip install -r backend/user_service/requirements.txt
           pip install pytest pytest-cov coverage xmltodict
 
-      # 5️⃣ Run tests for books_service
       - name: Run tests books_service
         run: |
           cd backend/books_service
           pytest --cov=books --cov-append --cov-report=term --cov-report=xml:.coverage-books.xml
           cd ../../..
 
-      # 6️⃣ Run tests for user_service
       - name: Run tests user_service
         run: |
           cd backend/user_service
           pytest --cov=users --cov-append --cov-report=term --cov-report=xml:.coverage-users.xml
           cd ../../..
 
-      # 7️⃣ Combine coverage reports
       - name: Combine coverage
         run: |
           mv backend/books_service/.coverage backend/.coverage.books
@@ -60,14 +53,12 @@ jobs:
           coverage combine backend/.coverage.books backend/.coverage.users
           coverage xml -o backend/coverage.xml
 
-      # 8️⃣ Upload combined coverage report
-      - name: Upload coverage report
+      - name: Upload combined coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: backend/coverage.xml
 
-      # 9️⃣ SonarCloud Scan (v6)
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v6
         with:
@@ -80,9 +71,4 @@ jobs:
             -Dsonar.sources=.
             -Dsonar.tests=.
             -Dsonar.test.inclusions=**/tests/**/*.py
-
-      # 🔟 Optional: SonarCloud Quality Gate
-      - name: SonarCloud Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        with:
-          sonar-token: ${{ secrets.SONAR_TOKEN }}
+            -Dsonar.qualitygate.wait=true
