@@ -82,7 +82,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 📦 Installer dépendances globales
+      - name: 📦 Install requirements
         working-directory: ./backend
         run: |
           python -m pip install --upgrade pip
@@ -162,11 +162,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: 📥 Download coverage reports
+
+      - name: 📥 Download coverage report
         uses: actions/download-artifact@v4
         with:
-          name: coverage-*
+          name: coverage-books_service
           path: coverage-reports
 
       - name: 🔍 SonarQube Scan
