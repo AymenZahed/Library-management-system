@@ -81,100 +81,46 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
       - name: 📦 Installer dépendances globales
         working-directory: ./backend
         run: |
-          echo "📦 Installation des dépendances globales..."
-          pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install mysqlclient
-          pip install djangorestframework-simplejwt
-          pip install pytest pytest-cov pytest-django
 
       - name: 📦 Installer dépendances du microservice
         working-directory: ./backend/${{ matrix.service }}
         run: |
-          echo "📦 Installation des dépendances pour ${{ matrix.service }}..."
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: 🔧 Charger variables d'environnement
         run: |
-          echo "🔧 Configuration des variables d'environnement..."
-          echo "DATABASE_URL=mysql://root:root@127.0.0.1:3306/library_test" >> $GITHUB_ENV
           echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
-          echo "DB_PORT=3306" >> $GITHUB_ENV
-          echo "DB_NAME=library_test" >> $GITHUB_ENV
           echo "DB_USER=root" >> $GITHUB_ENV
           echo "DB_PASSWORD=root" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci-pipeline" >> $GITHUB_ENV
+          echo "DB_NAME=library_test" >> $GITHUB_ENV
 
       - name: ⏳ Attendre que MySQL soit prêt
         run: |
-          echo "⏳ Attente du démarrage de MySQL..."
-          for i in {1..30}; do
-            mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null && {
-              echo "✅ MySQL est prêt!"
-              break
-            }
-            echo "⏱️  MySQL non prêt ($i/30)..."
-            sleep 2
-          done
-          
-          # Vérification finale avec user explicite
-          mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;" 2>/dev/null || {
-            echo "❌ MySQL n'est pas accessible"
-            exit 1
-          }
-          
-          echo "✅ Connexion MySQL vérifiée"
+          for i in {1..30}; do mysqladmin ping -h127.0.0.1 -proot && break || sleep 2; done
 
-      - name: 🧪 Exécuter les tests
+      - name: 🔧 Appliquer migrations Django
         working-directory: ./backend/${{ matrix.service }}
         run: |
-          echo "🧪 Lancement des tests pour ${{ matrix.service }}..."
-          echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
-          
-          # Trouver les tests
-          TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
-          echo "📋 Nombre de fichiers de test trouvés: $TEST_FILES"
-          
-          if [ "$TEST_FILES" -gt 0 ]; then
-            # Exécuter pytest avec couverture
-            pytest -vv \
-              --disable-warnings \
-              --maxfail=1 \
-              --tb=short \
-              --cov=. \
-              --cov-report=xml:coverage.xml \
-              --cov-report=term-missing \
-              || TEST_EXIT_CODE=$?
-            
-            # Vérifier que le fichier coverage a été créé
-            if [ -f "coverage.xml" ]; then
-              echo "✅ Rapport de couverture généré"
-              ls -lh coverage.xml
-            else
-              echo "⚠️ Fichier coverage.xml non généré"
-              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
-            fi
-            
-            exit ${TEST_EXIT_CODE:-0}
-          else
-            echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
-          fi
+          python manage.py migrate --noinput
+
+      - name: 🧪 Exécuter les tests (coverage XML)
+        working-directory: ./backend/${{ matrix.service }}
+        run: |
+          mkdir -p coverage-reports
+          pytest --maxfail=1 -q --disable-warnings --cov=./ --cov-report=xml:coverage-reports/coverage-${{ matrix.service }}.xml
 
       - name: 📤 Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.service }}
-          path: backend/${{ matrix.service }}/coverage.xml
-          retention-days: 30
+          path: ./backend/${{ matrix.service }}/coverage-reports/coverage-${{ matrix.service }}.xml
 
   combine-coverage:
     name: 📊 Combinaison des Rapports de Couverture
@@ -220,9 +166,9 @@ jobs:
       - name: 📥 Download coverage reports
         uses: actions/download-artifact@v4
         with:
-          name: all-coverage-reports
+          name: coverage-*
           path: coverage-reports
-      
+
       - name: 🔍 SonarQube Scan
         uses: SonarSource/sonarcloud-github-action@master
         env:
