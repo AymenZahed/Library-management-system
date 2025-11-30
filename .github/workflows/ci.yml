@@ -16,14 +16,13 @@ jobs:
     steps:
       - name: 📢 Message de démarrage
         run: |
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║   🚀 DÉMARRAGE DU PIPELINE CI/CD                        ║"
-          echo "║   📚 Projet: Library Management System                  ║"
-          echo "║   🗄️  Base de données: MySQL                           ║"
-          echo "║   👤 Déclenché par: ${{ github.actor }}                 ║"
-          echo "║   🌿 Branche: ${{ github.ref_name }}                    ║"
-          echo "║   📋 Event: ${{ github.event_name }}                    ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
+          echo "╔════════════════════════════════════╗"
+          echo "║   🚀 DÉMARRAGE DU PIPELINE         ║"
+          echo "║   📚 Projet: Library Management    ║"
+          echo "║   👤 Déclenché par: ${{ github.actor }} ║"
+          echo "║   🌿 Branche: ${{ github.ref_name }}    ║"
+          echo "║   📋 Event: ${{ github.event_name }}    ║"
+          echo "╚════════════════════════════════════╝"
 
   discover-services:
     name: 🔍 Découverte des Microservices
@@ -31,34 +30,28 @@ jobs:
     needs: initiation
     outputs:
       services: ${{ steps.find-services.outputs.services }}
-
     steps:
       - uses: actions/checkout@v4
 
       - name: 🔍 Trouver les services
         id: find-services
         run: |
-          echo "🔍 Recherche des microservices..."
           SERVICES=$(find backend -maxdepth 1 -type d -name "*_service" | sed 's|backend/||' | sort)
           if [ -z "$SERVICES" ]; then
-            echo "⚠️  Aucun service trouvé, utilisation de user_service par défaut"
             SERVICES="user_service"
           fi
-          echo "📦 Services trouvés:"
-          echo "$SERVICES"
           JSON=$(echo "$SERVICES" | jq -R -s -c 'split("\n") | map(select(length>0))')
           echo "services=$JSON" >> $GITHUB_OUTPUT
+          echo "📦 Services trouvés: $SERVICES"
 
   tests-unitaires:
     name: 🧪 Tests Unitaires et Couverture
     runs-on: ubuntu-latest
-    needs: [initiation, discover-services]
-
+    needs: discover-services
     strategy:
       matrix:
         service: ${{ fromJson(needs.discover-services.outputs.services) }}
       fail-fast: false
-
     services:
       mysql:
         image: mysql:8.0
@@ -72,7 +65,6 @@ jobs:
           --health-interval=5s
           --health-timeout=3s
           --health-retries=10
-
     steps:
       - uses: actions/checkout@v4
 
@@ -85,102 +77,55 @@ jobs:
       - name: 📦 Installer dépendances globales
         working-directory: ./backend
         run: |
-          echo "📦 Installation des dépendances globales..."
           pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
-          pip install mysqlclient
-          pip install djangorestframework-simplejwt
-          pip install pytest pytest-cov pytest-django
+          pip install mysqlclient djangorestframework-simplejwt pytest pytest-cov pytest-django
 
-      - name: 📦 Installer dépendances du microservice
+      - name: 📦 Installer dépendances du service
         working-directory: ./backend/${{ matrix.service }}
         run: |
-          echo "📦 Installation des dépendances pour ${{ matrix.service }}..."
           if [ -f "requirements.txt" ]; then
             pip install -r requirements.txt
           fi
 
-      - name: 🔧 Charger variables d'environnement
+      - name: 🔧 Configurer variables d'environnement
         run: |
-          echo "🔧 Configuration des variables d'environnement..."
           echo "DATABASE_URL=mysql://root:root@127.0.0.1:3306/library_test" >> $GITHUB_ENV
           echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
           echo "DB_PORT=3306" >> $GITHUB_ENV
           echo "DB_NAME=library_test" >> $GITHUB_ENV
           echo "DB_USER=root" >> $GITHUB_ENV
           echo "DB_PASSWORD=root" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci-pipeline" >> $GITHUB_ENV
+          echo "SECRET_KEY=test-secret-key" >> $GITHUB_ENV
 
-      - name: ⏳ Attendre que MySQL soit prêt
+      - name: ⏳ Attendre MySQL
         run: |
-          echo "⏳ Attente du démarrage de MySQL..."
           for i in {1..30}; do
-            mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null && {
-              echo "✅ MySQL est prêt!"
-              break
-            }
-            echo "⏱️  MySQL non prêt ($i/30)..."
+            mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null && break
             sleep 2
           done
 
-          # Vérification finale avec user explicite
-          mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;" 2>/dev/null || {
-            echo "❌ MySQL n'est pas accessible"
-            exit 1
-          }
-
-          echo "✅ Connexion MySQL vérifiée"
-
-      - name: 🧪 Exécuter les tests
+      - name: 🧪 Lancer les tests avec coverage
         working-directory: ./backend/${{ matrix.service }}
         run: |
-          echo "🧪 Lancement des tests pour ${{ matrix.service }}..."
-          echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
-
-          # Trouver les tests
           TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
-          echo "📋 Nombre de fichiers de test trouvés: $TEST_FILES"
-
           if [ "$TEST_FILES" -gt 0 ]; then
-            # Exécuter pytest avec couverture
-            pytest -vv \
-              --disable-warnings \
-              --maxfail=1 \
-              --tb=short \
-              --cov=. \
-              --cov-report=xml:coverage.xml \
-              --cov-report=term-missing \
-              || TEST_EXIT_CODE=$?
-            
-            # Vérifier que le fichier coverage a été créé
-            if [ -f "coverage.xml" ]; then
-              echo "✅ Rapport de couverture généré"
-              ls -lh coverage.xml
-            else
-              echo "⚠️ Fichier coverage.xml non généré"
-              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
-            fi
-            
-            exit ${TEST_EXIT_CODE:-0}
+            pytest --disable-warnings --cov=. --cov-report=xml:coverage.xml || TEST_EXIT_CODE=$?
           else
-            echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
+            echo '<?xml version="1.0"?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
+          exit ${TEST_EXIT_CODE:-0}
 
-      - name: 📤 Upload coverage report
-        if: always()
+      - name: 📤 Upload coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.service }}
           path: backend/${{ matrix.service }}/coverage.xml
-          retention-days: 30
 
   combine-coverage:
     name: 📊 Combinaison des Rapports de Couverture
     runs-on: ubuntu-latest
-    needs: [discover-services, tests-unitaires]
-    if: always()
-
+    needs: tests-unitaires
     steps:
       - uses: actions/checkout@v4
 
@@ -189,107 +134,41 @@ jobs:
         with:
           path: coverage-reports
           pattern: coverage-*
-          merge-multiple: true
 
-      - name: 📊 Afficher les rapports téléchargés
-        run: |
-          echo "📊 Rapports de couverture téléchargés:"
-          find coverage-reports -name "*.xml" -type f || true
-          echo ""
-          echo "📁 Structure complète:"
-          ls -R coverage-reports/ || true
-
-      - name: 📤 Upload des rapports combinés
+      - name: 📤 Upload combiné
         uses: actions/upload-artifact@v4
         with:
           name: all-coverage-reports
           path: coverage-reports/
-          retention-days: 30
 
   sonar-analysis:
     name: 🔍 Analyse SonarQube
     runs-on: ubuntu-latest
-    needs: [tests-unitaires, combine-coverage]
-    if: (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') && always()
-
+    needs: combine-coverage
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 📥 Télécharger tous les rapports de couverture
+      - name: 📥 Télécharger coverage pour Sonar
         uses: actions/download-artifact@v4
         with:
           name: all-coverage-reports
-          path: coverage-reports
+          path: sonar-coverage
 
-      - name: 🔍 Préparer coverage pour SonarCloud (copie + renommage)
+      - name: 🔧 Corriger <source> dans coverage.xml
         run: |
-          set -e
-          echo "Création dossier sonar-coverage..."
-          rm -rf sonar-coverage || true
-          mkdir -p sonar-coverage
-
-          # Find every coverage.xml and copy it to sonar-coverage/coverage-<service>.xml
-          echo "Recherche des coverage.xml dans coverage-reports/ ..."
-          find coverage-reports -name "coverage.xml" -print || true
-
-          for f in $(find coverage-reports -name "coverage.xml" -print); do
-            parent_dir=$(basename "$(dirname "$f")")
-            # If parent_dir is '.', fallback to numbered name
-            if [ -z "$parent_dir" ] || [ "$parent_dir" = "." ]; then
-              timestamp=$(date +%s)
-              dest="sonar-coverage/coverage-${timestamp}.xml"
-            else
-              dest="sonar-coverage/coverage-${parent_dir}.xml"
-            fi
-            cp "$f" "$dest"
-            echo "Copied $f -> $dest"
-          done
-
-          echo "Fichiers dans sonar-coverage/:"
-          ls -lh sonar-coverage || true
-
-          # If no files were copied, create a dummy minimal coverage to avoid Sonar complaining
-          if [ ! "$(ls -A sonar-coverage 2>/dev/null)" ]; then
-            echo "⚠️ Aucun fichier de couverture trouvé, création d'un fichier factice"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > sonar-coverage/coverage-empty.xml
-          fi
-
-      - name: 🔧 Fixer les <source> dans les coverage XML pour pointer vers backend/<service>
-        run: |
-          set -e
-          echo "Correction des balises <source> à l'intérieur des coverage files..."
-
+          mkdir -p sonar-coverage-fixed
           for xml in sonar-coverage/*.xml; do
             svc=$(basename "$xml" | sed -E 's/^coverage-//; s/\.xml$//')
-            echo "Traitement $xml => service key: $svc"
-
-            # If coverage was produced from backend/<svc>, update <source> accordingly
-            if grep -q "<source>.</source>" "$xml"; then
-              # Try to map service key to backend path (common pattern: user_service or books_service)
-              if [ -d "backend/${svc}" ]; then
-                sed -i "s|<source>.</source>|<source>backend/${svc}</source>|g" "$xml"
-                echo "  -> replaced with backend/${svc}"
-              else
-                # If folder not found, set to backend (fallback)
-                sed -i "s|<source>.</source>|<source>backend</source>|g" "$xml"
-                echo "  -> replaced with backend (fallback)"
-              fi
+            if [ -d "backend/${svc}" ]; then
+              sed "s|<source>.</source>|<source>backend/${svc}</source>|g" "$xml" > "sonar-coverage-fixed/${svc}.xml"
             else
-              echo "  -> no <source>.</source> marker found (skipping)"
+              cp "$xml" "sonar-coverage-fixed/${svc}.xml"
             fi
           done
 
-          echo "Résultat des fichiers corrigés:"
-          for xml in sonar-coverage/*.xml; do
-            echo "---- $xml ----"
-            sed -n '1,30p' "$xml" || true
-            echo "---------------"
-          done
-
-      - name: 🧠 SonarQube Scan (Main Branch)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: 🧠 SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -299,31 +178,10 @@ jobs:
             -Dsonar.organization=library-system-management
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.sources=backend
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
+            -Dsonar.python.coverage.reportPaths=sonar-coverage-fixed/*.xml
             -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
             -Dsonar.test.exclusions=**/tests/**
             -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
-
-      - name: 🧠 SonarQube Scan (Pull Request)
-        if: github.event_name == 'pull_request'
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=library-system-management
-            -Dsonar.projectKey=AymenZahed_Library-management-system
-            -Dsonar.sources=backend
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
-            -Dsonar.test.exclusions=**/tests/**
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
-            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-            -Dsonar.pullrequest.branch=${{ github.head_ref }}
-            -Dsonar.pullrequest.base=${{ github.base_ref }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
 
