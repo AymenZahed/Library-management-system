@@ -10,7 +10,6 @@ env:
   PYTHON_VERSION: '3.10'
 
 jobs:
-
   initiation:
     name: 🚀 Initialisation du Pipeline
     runs-on: ubuntu-latest
@@ -123,13 +122,13 @@ jobs:
             echo "⏱️  MySQL non prêt ($i/30)..."
             sleep 2
           done
-          
+
           # Vérification finale avec user explicite
           mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;" 2>/dev/null || {
             echo "❌ MySQL n'est pas accessible"
             exit 1
           }
-          
+
           echo "✅ Connexion MySQL vérifiée"
 
       - name: 🧪 Exécuter les tests
@@ -137,11 +136,11 @@ jobs:
         run: |
           echo "🧪 Lancement des tests pour ${{ matrix.service }}..."
           echo "🔗 Connexion à MySQL: root@127.0.0.1:3306/library_test"
-          
+
           # Trouver les tests
           TEST_FILES=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
           echo "📋 Nombre de fichiers de test trouvés: $TEST_FILES"
-          
+
           if [ "$TEST_FILES" -gt 0 ]; then
             # Exécuter pytest avec couverture
             pytest -vv \
@@ -195,10 +194,10 @@ jobs:
       - name: 📊 Afficher les rapports téléchargés
         run: |
           echo "📊 Rapports de couverture téléchargés:"
-          find coverage-reports -name "*.xml" -type f
+          find coverage-reports -name "*.xml" -type f || true
           echo ""
           echo "📁 Structure complète:"
-          ls -R coverage-reports/
+          ls -R coverage-reports/ || true
 
       - name: 📤 Upload des rapports combinés
         uses: actions/upload-artifact@v4
@@ -224,34 +223,70 @@ jobs:
           name: all-coverage-reports
           path: coverage-reports
 
-      - name: 🔍 Vérifier les rapports de couverture
+      - name: 🔍 Préparer coverage pour SonarCloud (copie + renommage)
         run: |
-          echo "🔍 Recherche des fichiers coverage.xml..."
-          find coverage-reports -name "coverage.xml" -type f
-          
-          # Copier tous les coverage.xml dans un dossier commun pour SonarQube
+          set -e
+          echo "Création dossier sonar-coverage..."
+          rm -rf sonar-coverage || true
           mkdir -p sonar-coverage
-          find coverage-reports -name "coverage.xml" -exec cp {} sonar-coverage/ \;
-          
-          # Renommer pour éviter les conflits
-          cd sonar-coverage
-          i=1
-          for file in coverage.xml; do
-            if [ $i -gt 1 ]; then
-              mv "$file" "coverage-$i.xml" 2>/dev/null || true
+
+          # Find every coverage.xml and copy it to sonar-coverage/coverage-<service>.xml
+          echo "Recherche des coverage.xml dans coverage-reports/ ..."
+          find coverage-reports -name "coverage.xml" -print || true
+
+          for f in $(find coverage-reports -name "coverage.xml" -print); do
+            parent_dir=$(basename "$(dirname "$f")")
+            # If parent_dir is '.', fallback to numbered name
+            if [ -z "$parent_dir" ] || [ "$parent_dir" = "." ]; then
+              timestamp=$(date +%s)
+              dest="sonar-coverage/coverage-${timestamp}.xml"
+            else
+              dest="sonar-coverage/coverage-${parent_dir}.xml"
             fi
-            ((i++))
+            cp "$f" "$dest"
+            echo "Copied $f -> $dest"
           done
-          cd ..
-          
-          echo "📊 Fichiers de couverture pour SonarQube:"
-          ls -lh sonar-coverage/
-          
-          # Vérifier qu'au moins un fichier existe
-          if [ ! "$(ls -A sonar-coverage/)" ]; then
-            echo "⚠️ Aucun fichier de couverture trouvé, création d'un rapport factice"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > sonar-coverage/coverage.xml
+
+          echo "Fichiers dans sonar-coverage/:"
+          ls -lh sonar-coverage || true
+
+          # If no files were copied, create a dummy minimal coverage to avoid Sonar complaining
+          if [ ! "$(ls -A sonar-coverage 2>/dev/null)" ]; then
+            echo "⚠️ Aucun fichier de couverture trouvé, création d'un fichier factice"
+            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > sonar-coverage/coverage-empty.xml
           fi
+
+      - name: 🔧 Fixer les <source> dans les coverage XML pour pointer vers backend/<service>
+        run: |
+          set -e
+          echo "Correction des balises <source> à l'intérieur des coverage files..."
+
+          for xml in sonar-coverage/*.xml; do
+            svc=$(basename "$xml" | sed -E 's/^coverage-//; s/\.xml$//')
+            echo "Traitement $xml => service key: $svc"
+
+            # If coverage was produced from backend/<svc>, update <source> accordingly
+            if grep -q "<source>.</source>" "$xml"; then
+              # Try to map service key to backend path (common pattern: user_service or books_service)
+              if [ -d "backend/${svc}" ]; then
+                sed -i "s|<source>.</source>|<source>backend/${svc}</source>|g" "$xml"
+                echo "  -> replaced with backend/${svc}"
+              else
+                # If folder not found, set to backend (fallback)
+                sed -i "s|<source>.</source>|<source>backend</source>|g" "$xml"
+                echo "  -> replaced with backend (fallback)"
+              fi
+            else
+              echo "  -> no <source>.</source> marker found (skipping)"
+            fi
+          done
+
+          echo "Résultat des fichiers corrigés:"
+          for xml in sonar-coverage/*.xml; do
+            echo "---- $xml ----"
+            sed -n '1,30p' "$xml" || true
+            echo "---------------"
+          done
 
       - name: 🧠 SonarQube Scan (Main Branch)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -291,8 +326,6 @@ jobs:
             -Dsonar.pullrequest.base=${{ github.base_ref }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
-            
-            
 
       - name: ⚠️ Quality Gate Failed
         if: failure()
@@ -323,7 +356,7 @@ jobs:
           echo "   3. Améliorer la couverture de tests"
           echo "   4. Refactoriser le code avec des code smells"
           echo ""
-          
+
           # Ne pas faire échouer le pipeline en développement
           if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "⚠️  Mode développement: le pipeline continue malgré l'échec du Quality Gate"
@@ -391,12 +424,12 @@ jobs:
           echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
           echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
           echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
-          
+
           # Afficher le statut SonarQube si exécuté
           if [[ "${{ needs.sonar-analysis.result }}" != "" ]]; then
             echo "   4️⃣  SonarQube: ${{ needs.sonar-analysis.result }}"
           fi
-          
+
           echo ""
 
           # Vérifier si les tests ont réussi
