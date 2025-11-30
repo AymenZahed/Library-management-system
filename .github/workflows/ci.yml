@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test-and-analyze:
@@ -52,14 +52,13 @@ jobs:
           pytest --cov=users --cov-append --cov-report=term --cov-report=xml:.coverage-users.xml
           cd ../../..
 
-      # 7️⃣ Combine coverage reports (use .coverage data files)
+      # 7️⃣ Combine coverage reports
       - name: Combine coverage
         run: |
-          mv backend/books_service/.coverage backend/.coverage.books || true
-          mv backend/user_service/.coverage backend/.coverage.users || true
+          mv backend/books_service/.coverage backend/.coverage.books
+          mv backend/user_service/.coverage backend/.coverage.users
           coverage combine backend/.coverage.books backend/.coverage.users
           coverage xml -o backend/coverage.xml
-          coverage report
 
       # 8️⃣ Upload combined coverage report
       - name: Upload coverage report
@@ -68,18 +67,19 @@ jobs:
           name: coverage
           path: backend/coverage.xml
 
-      # 9️⃣ SonarCloud Scan
+      # 9️⃣ SonarCloud Scan (v6)
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: sonarsource/sonarqube-scan-action@v6
         with:
-          projectKey: AymenZahed_Library-management-system
-          organization: library-system-management
           projectBaseDir: ./backend
-          extraProperties: |
-            sonar.python.coverage.reportPaths=coverage.xml
-            sonar.sources=.
-            sonar.tests=.
-            sonar.test.inclusions=**/tests/**/*.py
+          args: >
+            -Dsonar.projectKey=AymenZahed_Library-management-system
+            -Dsonar.organization=library-system-management
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=.
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/tests/**/*.py
 
       # 🔟 Optional: SonarCloud Quality Gate
       - name: SonarCloud Quality Gate
