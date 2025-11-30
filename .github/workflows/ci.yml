@@ -2,87 +2,74 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  test-and-analyze:
+  build:
     runs-on: ubuntu-latest
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    strategy:
+      matrix:
+        python-version: [3.11]
 
     steps:
-      # 1️⃣ Checkout full repo
+      # 1️⃣ Checkout the repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Full clone needed for Sonar blame info
 
       # 2️⃣ Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
-      # 3️⃣ Install dependencies for books_service
-      - name: Install books_service dependencies
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/books_service/requirements.txt
-          pip install pytest pytest-cov coverage xmltodict
+          pip install -r backend/requirements.txt
+          pip install coverage pytest pytest-cov
 
-      # 4️⃣ Install dependencies for user_service
-      - name: Install user_service dependencies
-        run: |
-          pip install -r backend/user_service/requirements.txt
-          pip install pytest pytest-cov coverage xmltodict
-
-      # 5️⃣ Run tests for books_service
+      # 4️⃣ Run tests for books_service
       - name: Run tests books_service
         run: |
-         cd backend/books_service
-         pytest --cov=books --cov-append --cov-report=term --cov-report=xml:.coverage-books.xml
-         cd ../../..
+          cd backend/books_service
+          pytest --cov=books --cov-report=term --cov-report= --cov-append
+          mv .coverage ../.coverage.books
+          cd ../../
 
-      # 6️⃣ Run tests for user_service
+      # 5️⃣ Run tests for user_service
       - name: Run tests user_service
         run: |
-         cd backend/user_service
-         pytest --cov=users --cov-append --cov-report=term --cov-report=xml:.coverage-users.xml
-         cd ../../..
+          cd backend/user_service
+          pytest --cov=users --cov-report=term --cov-report= --cov-append
+          mv .coverage ../.coverage.users
+          cd ../../
 
-      # 7️⃣ Combine coverage reports (use .coverage data files)
+      # 6️⃣ Combine coverage reports
       - name: Combine coverage
         run: |
-         mv backend/books_service/.coverage backend/.coverage.books
-         mv backend/user_service/.coverage backend/.coverage.users
-         coverage combine backend/.coverage.books backend/.coverage.users
-         coverage xml -o backend/coverage.xml
+          coverage combine backend/.coverage.books backend/.coverage.users
+          coverage xml -o backend/coverage.xml
+          coverage report
 
-
-      # 8️⃣ Upload combined coverage report
-      - name: Upload coverage report
+      # 7️⃣ Upload coverage artifact (optional)
+      - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: coverage-report
           path: backend/coverage.xml
 
-      # 9️⃣ SonarCloud Scan
+      # 8️⃣ SonarCloud scan
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarcloud-github-action@v2
         with:
-          projectKey: AymenZahed_Library-management-system
-          organization: library-system-management
-          projectBaseDir: ./backend
-          extraProperties: |
-            sonar.python.coverage.reportPaths=coverage.xml
-            sonar.sources=.
-            sonar.tests=.
-            sonar.test.inclusions=**/tests/**/*.py
-
-      # 🔟 Optional: SonarCloud Quality Gate
-      - name: SonarCloud Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        with:
-          sonar-token: ${{ secrets.SONAR_TOKEN }}
+          projectBaseDir: .
+          organization: ${{ secrets.SONAR_ORGANIZATION }}
+          token: ${{ secrets.SONAR_TOKEN }}
