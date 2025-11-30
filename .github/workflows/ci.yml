@@ -166,11 +166,11 @@ jobs:
       - name: 📥 Download coverage report
         uses: actions/download-artifact@v4
         with:
-          name: coverage-books_service
           path: coverage-reports
+          # if you uploaded a named artifact, add: name: coverage-books_service
 
       - name: 🔍 SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: sonarsource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
