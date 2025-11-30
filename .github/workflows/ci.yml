@@ -44,13 +44,14 @@ jobs:
           echo "📦 Services trouvés: $SERVICES"
 
   tests-unitaires:
-    name: 🧪 Tests Unitaires et Couverture
+    name: 🧪 Tests Unitaires - ${{ matrix.service }}
     runs-on: ubuntu-latest
     needs: discover-services
     strategy:
       matrix:
         service: ${{ fromJson(needs.discover-services.outputs.services) }}
       fail-fast: false
+
     services:
       mysql:
         image: mysql:8.0
@@ -64,8 +65,11 @@ jobs:
           --health-interval=5s
           --health-timeout=3s
           --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v4
@@ -76,68 +80,211 @@ jobs:
       - name: 📦 Installer dépendances
         working-directory: ./backend/${{ matrix.service }}
         run: |
+          echo "📦 Installation des dépendances pour ${{ matrix.service }}..."
           pip install --upgrade pip setuptools wheel
-          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
-          pip install mysqlclient pytest pytest-cov
+          if [ -f "requirements.txt" ]; then 
+            pip install -r requirements.txt
+          fi
+          pip install mysqlclient pytest pytest-cov pytest-django
 
       - name: 🔧 Configurer variables d'environnement
         run: |
-          echo "DATABASE_URL=mysql://root:root@127.0.0.1:3306/library_test" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key" >> $GITHUB_ENV
+          echo "DB_ENGINE=django.db.backends.mysql" >> $GITHUB_ENV
+          echo "DB_NAME=library_test" >> $GITHUB_ENV
+          echo "DB_USER=root" >> $GITHUB_ENV
+          echo "DB_PASSWORD=root" >> $GITHUB_ENV
+          echo "DB_HOST=127.0.0.1" >> $GITHUB_ENV
+          echo "DB_PORT=3306" >> $GITHUB_ENV
+          echo "SECRET_KEY=test-secret-key-for-ci-pipeline-${{ matrix.service }}" >> $GITHUB_ENV
+          echo "USE_MYSQL_FOR_TESTS=true" >> $GITHUB_ENV
 
       - name: ⏳ Attendre MySQL
         run: |
+          echo "⏳ Attente du démarrage de MySQL..."
           for i in {1..30}; do
-            mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null && break
+            if mysqladmin --protocol=TCP ping -h127.0.0.1 -uroot -proot 2>/dev/null; then
+              echo "✅ MySQL est prêt!"
+              break
+            fi
+            echo "⏱️  Tentative $i/30..."
             sleep 2
           done
+          mysql -h127.0.0.1 -uroot -proot -e "SHOW DATABASES;"
 
-      - name: 🧪 Lancer les tests avec coverage
+      - name: 🧪 Exécuter les tests avec coverage
+        working-directory: ./backend/${{ matrix.service }}
         run: |
-          if [ -d "tests" ] || [ -n "$(find . -name 'test_*.py' -o -path '*/tests/test_*.py' 2>/dev/null)" ]; then
-            pytest --disable-warnings --cov=. --cov-report=xml:coverage.xml || TEST_EXIT_CODE=$?
+          echo "🧪 Lancement des tests pour ${{ matrix.service }}..."
+
+          # Compter les fichiers de test
+          TEST_COUNT=$(find . -name "test_*.py" -o -path "*/tests/test_*.py" 2>/dev/null | wc -l)
+          echo "📋 Fichiers de test trouvés: $TEST_COUNT"
+
+          if [ "$TEST_COUNT" -gt 0 ]; then
+            # Exécuter pytest avec coverage
+            pytest -vv \
+              --disable-warnings \
+              --cov=. \
+              --cov-report=xml:coverage.xml \
+              --cov-report=term-missing \
+              || TEST_EXIT_CODE=$?
+            
+            if [ -f "coverage.xml" ]; then
+              echo "✅ Coverage généré"
+              
+              # CORRECTION CRITIQUE DES CHEMINS
+              echo "🔧 Correction des chemins dans coverage.xml..."
+              
+              # Supprimer tous les tags <source> existants
+              sed -i '/<source>/d' coverage.xml
+              
+              # Ajouter le bon chemin source RELATIF à la racine du repo
+              sed -i "s|<sources>|<sources>\n  <source>backend/${{ matrix.service }}</source>|" coverage.xml
+              
+              # Corriger les chemins des fichiers pour qu'ils soient relatifs à la racine du repo
+              # Remplacer filename="users/models.py" par filename="backend/user_service/users/models.py"
+              sed -i 's|filename="|filename="backend/${{ matrix.service }}/|g' coverage.xml
+              
+              # Nettoyer les doubles chemins si créés par erreur
+              sed -i 's|backend/${{ matrix.service }}/backend/${{ matrix.service }}/|backend/${{ matrix.service }}/|g' coverage.xml
+              
+              echo "📊 Aperçu du fichier corrigé:"
+              head -30 coverage.xml
+              
+              echo ""
+              echo "📂 Chemins des fichiers dans coverage:"
+              grep 'filename=' coverage.xml | head -10
+              
+            else
+              echo "⚠️ Pas de coverage.xml généré"
+              echo '<?xml version="1.0"?><coverage version="7.0"><sources><source>backend/${{ matrix.service }}</source></sources><packages/></coverage>' > coverage.xml
+            fi
+            
+            exit ${TEST_EXIT_CODE:-0}
           else
-            echo '<?xml version="1.0"?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
+            echo "⚠️ Aucun test trouvé"
+            echo '<?xml version="1.0"?><coverage version="7.0"><sources><source>backend/${{ matrix.service }}</source></sources><packages/></coverage>' > coverage.xml
           fi
-          exit ${TEST_EXIT_CODE:-0}
 
       - name: 📤 Upload coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.service }}
           path: backend/${{ matrix.service }}/coverage.xml
+          retention-days: 30
 
   combine-coverage:
-    name: 📊 Préparer coverage pour Sonar
+    name: 📊 Combiner les Rapports de Coverage
     runs-on: ubuntu-latest
-    needs: tests-unitaires
+    needs: [discover-services, tests-unitaires]
+    if: always()
+
     steps:
       - uses: actions/checkout@v4
-      - name: 📥 Télécharger coverage artifacts
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Télécharger tous les rapports
         uses: actions/download-artifact@v4
         with:
           path: coverage-reports
           pattern: coverage-*
-      - name: 🔧 Fixer coverage pour Sonar
+          merge-multiple: false
+
+      - name: 📊 Vérifier et préparer les rapports
         run: |
+          echo "📊 Vérification des rapports téléchargés..."
+
           mkdir -p sonar-coverage
-          for xml in coverage-reports/*; do
-            svc=$(basename $xml | sed 's/^coverage-//')
-            if [ -f "$xml/coverage.xml" ]; then
-              sed "s|<source>.</source>|<source>backend/${svc}</source>|g" "$xml/coverage.xml" > "sonar-coverage/${svc}.xml"
-            else
-              cp "$xml/coverage.xml" "sonar-coverage/${svc}.xml"
+
+          echo "📂 Structure des artifacts:"
+          find coverage-reports -type f -name "*.xml"
+
+          # Copier tous les fichiers coverage.xml avec des noms uniques
+          for dir in coverage-reports/coverage-*; do
+            if [ -d "$dir" ]; then
+              service_name=$(basename "$dir" | sed 's/coverage-//')
+              if [ -f "$dir/coverage.xml" ]; then
+                cp "$dir/coverage.xml" "sonar-coverage/coverage-${service_name}.xml"
+                echo "✅ Copié: $dir/coverage.xml -> sonar-coverage/coverage-${service_name}.xml"
+                
+                echo ""
+                echo "📋 Contenu de coverage-${service_name}.xml (premières lignes):"
+                head -20 "sonar-coverage/coverage-${service_name}.xml"
+                echo ""
+              fi
             fi
           done
+
+          echo ""
+          echo "📊 Fichiers finaux dans sonar-coverage/:"
+          ls -lh sonar-coverage/
+
+          echo ""
+          echo "🔍 Vérification des chemins dans chaque fichier:"
+          for file in sonar-coverage/*.xml; do
+            echo "--- $(basename $file) ---"
+            grep '<source>' "$file" || echo "Pas de tag <source>"
+            echo "Exemples de chemins de fichiers:"
+            grep 'filename=' "$file" | head -3
+            echo ""
+          done
+
+      - name: 📤 Upload combined coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-coverage-reports
+          path: sonar-coverage/
+          retention-days: 30
 
   sonar-analysis:
     name: 🔍 Analyse SonarCloud
     runs-on: ubuntu-latest
-    needs: combine-coverage
+    needs: [tests-unitaires, combine-coverage]
+    if: (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') && always()
+
     steps:
       - uses: actions/checkout@v4
-      - name: 🧠 SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Télécharger les rapports combinés
+        uses: actions/download-artifact@v4
+        with:
+          name: all-coverage-reports
+          path: sonar-coverage
+
+      - name: 🔍 Vérification finale avant SonarQube
+        run: |
+          echo "🔍 Vérification des fichiers de couverture..."
+
+          if [ ! "$(ls -A sonar-coverage/ 2>/dev/null)" ]; then
+            echo "⚠️ Aucun fichier dans sonar-coverage/, création d'un rapport vide"
+            mkdir -p sonar-coverage
+            echo '<?xml version="1.0"?><coverage version="7.0"><sources><source>backend</source></sources><packages/></coverage>' > sonar-coverage/coverage.xml
+          fi
+
+          echo ""
+          echo "📊 Fichiers disponibles:"
+          ls -lh sonar-coverage/
+
+          echo ""
+          echo "📋 Contenu de chaque fichier (premières lignes):"
+          for file in sonar-coverage/*.xml; do
+            echo "===================="
+            echo "Fichier: $(basename $file)"
+            echo "===================="
+            head -25 "$file"
+            echo ""
+            echo "Chemins de fichiers dans ce rapport:"
+            grep 'filename=' "$file" | head -5
+            echo ""
+          done
+
+      - name: 🧠 SonarCloud Scan (Main Branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: SonarSource/sonarcloud-scan-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -146,12 +293,43 @@ jobs:
             -Dsonar.organization=library-system-management
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.sources=backend
-            -Dsonar.python.coverage.reportPaths=combine-coverage/sonar-coverage/*.xml
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**
-            -Dsonar.test.exclusions=**/tests/**
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**
+            -Dsonar.python.version=3.10
+            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
+            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py,**/apps.py,**/admin.py
+            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py
+            -Dsonar.test.inclusions=**/test_*.py,**/tests/**/*.py
+            -Dsonar.cpd.exclusions=**/tests/**,**/migrations/**
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.scm.provider=git
             -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+            -Dsonar.verbose=true
 
+      - name: 🧠 SonarCloud Scan (Pull Request)
+        if: github.event_name == 'pull_request'
+        uses: SonarSource/sonarcloud-scan-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=library-system-management
+            -Dsonar.projectKey=AymenZahed_Library-management-system
+            -Dsonar.sources=backend
+            -Dsonar.python.version=3.10
+            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
+            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py,**/apps.py,**/admin.py
+            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py
+            -Dsonar.test.inclusions=**/test_*.py,**/tests/**/*.py
+            -Dsonar.cpd.exclusions=**/tests/**,**/migrations/**
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.scm.provider=git
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+            -Dsonar.verbose=true
 
       - name: ⚠️ Quality Gate Failed
         if: failure()
@@ -163,32 +341,13 @@ jobs:
           echo ""
           echo "❌ Le code n'a pas passé les critères de qualité SonarQube"
           echo ""
-          echo "📊 Problèmes possibles:"
-          echo "   • Code coverage trop faible"
-          echo "   • Bugs ou vulnerabilités détectés"
-          echo "   • Code smells ou duplications"
-          echo "   • Problèmes de sécurité"
-          echo ""
-          echo "🔗 Consultez le rapport détaillé sur SonarCloud:"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   https://sonarcloud.io/project/pull_requests_list?id=MMA-PROJECT-V2_Library-Management-System"
-          else
-            echo "   https://sonarcloud.io/dashboard?id=AymenZahed_Library-management-system"
-          fi
-          echo ""
-          echo "💡 Actions recommandées:"
-          echo "   1. Vérifier les issues sur SonarCloud"
-          echo "   2. Corriger les bugs et vulnérabilités critiques"
-          echo "   3. Améliorer la couverture de tests"
-          echo "   4. Refactoriser le code avec des code smells"
+          echo "🔗 Consultez: https://sonarcloud.io/dashboard?id=AymenZahed_Library-management-system"
           echo ""
 
-          # Ne pas faire échouer le pipeline en développement
           if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "⚠️  Mode développement: le pipeline continue malgré l'échec du Quality Gate"
+            echo "⚠️  Mode développement: le pipeline continue"
             exit 0
           else
-            echo "❌ Le pipeline est interrompu (branche: ${{ github.ref_name }})"
             exit 1
           fi
 
@@ -199,89 +358,43 @@ jobs:
           echo "╔══════════════════════════════════════════════════════════╗"
           echo "║          ✅ ANALYSE SONARQUBE RÉUSSIE                   ║"
           echo "╚══════════════════════════════════════════════════════════╝"
-          echo "📊 Métriques analysées:"
-          echo "   • Couverture de code (tous services)"
-          echo "   • Qualité et sécurité du code"
-          echo "   • Code smells et duplications"
-          echo "   • Quality Gate: PASSED ✅"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "   • Décoration de la PR #${{ github.event.pull_request.number }}"
-          fi
 
   sonar-info:
     name: ℹ️ Info SonarQube (Push non-main)
     runs-on: ubuntu-latest
     needs: tests-unitaires
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
-
     steps:
-      - name: ℹ️ Information Plan Gratuit
+      - name: ℹ️ Information
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║     ℹ️  ANALYSE SONARQUBE - PUSH SUR ${{ github.ref_name }}"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo ""
           echo "📌 Branche: ${{ github.ref_name }}"
-          echo "✅ Tests unitaires: RÉUSSIS"
-          echo "💡 Pour analyse SonarQube: créer une PR vers main"
+          echo "✅ Tests: RÉUSSIS"
+          echo "💡 Pour SonarQube: créer une PR vers main"
 
   pipeline-summary:
     name: 📋 Résumé du Pipeline
     runs-on: ubuntu-latest
     needs: [initiation, discover-services, tests-unitaires, sonar-analysis]
     if: always()
-
     steps:
-      - name: 📊 Statut du Pipeline
+      - name: 📊 Statut
         run: |
-          echo ""
-          echo "╔══════════════════════════════════════════════════════════╗"
-          echo "║          📊 RÉSUMÉ DU PIPELINE CI/CD                    ║"
-          echo "╚══════════════════════════════════════════════════════════╝"
-          echo ""
-          echo "📅 Date: $(date)"
+          echo "╔══════════════════════════════════════╗"
+          echo "║     📊 RÉSUMÉ DU PIPELINE            ║"
+          echo "╚══════════════════════════════════════╝"
           echo "🌿 Branche: ${{ github.ref_name }}"
           echo "👤 Auteur: ${{ github.actor }}"
-          echo "🗄️  Base de données: MySQL 8.0"
-          echo "📋 Event: ${{ github.event_name }}"
           echo ""
-          echo "✅ Statut des jobs:"
-          echo "   1️⃣  Initiation: ${{ needs.initiation.result }}"
-          echo "   2️⃣  Découverte services: ${{ needs.discover-services.result }}"
-          echo "   3️⃣  Tests unitaires: ${{ needs.tests-unitaires.result }}"
+          echo "Statut:"
+          echo "  Tests: ${{ needs.tests-unitaires.result }}"
+          echo "  SonarQube: ${{ needs.sonar-analysis.result }}"
 
-          # Afficher le statut SonarQube si exécuté
-          if [[ "${{ needs.sonar-analysis.result }}" != "" ]]; then
-            echo "   4️⃣  SonarQube: ${{ needs.sonar-analysis.result }}"
-          fi
-
-          echo ""
-
-          # Vérifier si les tests ont réussi
           if [[ "${{ needs.tests-unitaires.result }}" == "success" ]]; then
-            echo "🎉 TESTS RÉUSSIS! Tous les services passent les tests unitaires."
-            
-            # Avertissement si SonarQube a échoué
-            if [[ "${{ needs.sonar-analysis.result }}" == "failure" ]]; then
-              echo ""
-              echo "⚠️  ATTENTION: Quality Gate SonarQube FAILED"
-              echo "   📊 Consultez https://sonarcloud.io pour les détails"
-              echo "   💡 Corrigez les problèmes de qualité avant le merge"
-              
-              # Fail seulement sur main
-              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-                echo ""
-                echo "❌ Pipeline échoué à cause du Quality Gate (branche main)"
-                exit 1
-              else
-                echo ""
-                echo "✅ Pipeline continue (branche de développement)"
-              fi
-            fi
-            
+            echo ""
+            echo "🎉 TESTS RÉUSSIS!"
             exit 0
           else
-            echo "❌ PIPELINE ÉCHOUÉ! Vérifiez les logs des tests."
+            echo ""
+            echo "❌ ÉCHEC"
             exit 1
           fi
