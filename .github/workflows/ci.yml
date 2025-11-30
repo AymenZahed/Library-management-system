@@ -124,26 +124,33 @@ jobs:
           path: backend/${{ matrix.service }}/coverage.xml
 
   combine-coverage:
-    name: 📊 Combiner les Rapports de Coverage
-    runs-on: ubuntu-latest
-    needs: tests-unitaires
-    steps:
-      - uses: actions/checkout@v4
-      - name: 📥 Télécharger tous les rapports
-        uses: actions/download-artifact@v4
-        with:
-          path: coverage-reports
-          name: coverage-*
-          merge-multiple: false
-      - name: 📂 Combiner et corriger chemins
-        run: |
-          mkdir -p sonar-coverage
-          for dir in coverage-reports/*; do
-            service=$(basename $dir | sed 's/coverage-//')
-            if [ -f "$dir/coverage.xml" ]; then
-              cp "$dir/coverage.xml" "sonar-coverage/coverage-${service}.xml"
-            fi
-          done
+   name: 📊 Combiner les Rapports de Coverage
+   runs-on: ubuntu-latest
+   needs: tests-unitaires
+   steps:
+    - uses: actions/checkout@v4
+
+    - name: 📥 Télécharger tous les rapports
+      run: |
+        mkdir -p coverage-reports
+        # Télécharger chaque artifact individuellement
+        for service in user_service books_service; do
+          echo "📥 Téléchargement de coverage-$service..."
+          if ! gh run download-artifact coverage-$service --dir coverage-reports/coverage-$service; then
+            echo "⚠️ Artifact coverage-$service non trouvé"
+          fi
+        done
+
+    - name: 📂 Combiner et corriger chemins
+      run: |
+        mkdir -p sonar-coverage
+        for dir in coverage-reports/*; do
+          service=$(basename $dir | sed 's/coverage-//')
+          if [ -f "$dir/coverage.xml" ]; then
+            cp "$dir/coverage.xml" "sonar-coverage/coverage-${service}.xml"
+          fi
+        done
+
 
   sonar-analysis:
     name: 🔍 Analyse SonarCloud
