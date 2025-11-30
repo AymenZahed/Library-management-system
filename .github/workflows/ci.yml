@@ -156,22 +156,40 @@ jobs:
               echo "✅ Rapport de couverture généré"
               ls -lh coverage.xml
               
-              # Fix coverage paths to be relative to repository root
-              # This is CRITICAL for SonarQube to match source files
-              sed -i "s|<source>.*</source>|<source>backend/${{ matrix.service }}</source>|g" coverage.xml
-              sed -i "s|filename=\"|filename=\"backend/${{ matrix.service }}/|g" coverage.xml
+              echo "📊 Fichier de couverture AVANT correction:"
+              head -30 coverage.xml
               
-              echo "📊 Aperçu du fichier de couverture (premières lignes):"
-              head -20 coverage.xml
+              # CRITICAL FIX: Clean up duplicate sources and fix paths
+              # Remove all <source> tags first
+              sed -i '/<source>/d' coverage.xml
+              
+              # Add single correct source after <sources> tag
+              sed -i "s|<sources>|<sources>\n<source>.</source>|" coverage.xml
+              
+              # Fix filename paths - make them relative to repo root
+              # Replace patterns like: filename="books/models.py" 
+              # With: filename="backend/${{ matrix.service }}/books/models.py"
+              sed -i 's|filename="|filename="backend/${{ matrix.service }}/|g' coverage.xml
+              
+              # Remove any double slashes that might have been created
+              sed -i 's|backend/${{ matrix.service }}/backend/${{ matrix.service }}/|backend/${{ matrix.service }}/|g' coverage.xml
+              
+              echo ""
+              echo "📊 Fichier de couverture APRÈS correction:"
+              head -30 coverage.xml
+              
+              echo ""
+              echo "🔍 Vérification des chemins de fichiers:"
+              grep 'filename=' coverage.xml | head -5
             else
               echo "⚠️ Fichier coverage.xml non généré"
-              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>backend/${{ matrix.service }}</source></sources><packages/></coverage>' > coverage.xml
+              echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
             fi
             
             exit ${TEST_EXIT_CODE:-0}
           else
             echo "⚠️ Aucun test trouvé pour ${{ matrix.service }}"
-            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>backend/${{ matrix.service }}</source></sources><packages/></coverage>' > coverage.xml
+            echo '<?xml version="1.0" ?><coverage version="7.0"><sources><source>.</source></sources><packages/></coverage>' > coverage.xml
           fi
 
       - name: 📤 Upload coverage report
@@ -276,17 +294,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_SCANNER_OPTS: "-Xmx512m"
         with:
           args: >
             -Dsonar.organization=library-system-management
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.sources=backend
             -Dsonar.python.version=3.10
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/__init__.py
+            -Dsonar.python.coverage.reportPaths=sonar-coverage/coverage-books_service.xml,sonar-coverage/coverage-user_service.xml
+            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py
+            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/manage.py,**/asgi.py,**/wsgi.py
             -Dsonar.test.inclusions=**/test_*.py,**/tests/**/*.py
+            -Dsonar.cpd.exclusions=**/tests/**,**/migrations/**
             -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.scm.provider=git
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
             -Dsonar.verbose=true
@@ -297,17 +318,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_SCANNER_OPTS: "-Xmx512m"
         with:
           args: >
             -Dsonar.organization=library-system-management
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.sources=backend
             -Dsonar.python.version=3.10
-            -Dsonar.python.coverage.reportPaths=sonar-coverage/*.xml
-            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py
-            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/__init__.py
+            -Dsonar.python.coverage.reportPaths=sonar-coverage/coverage-books_service.xml,sonar-coverage/coverage-user_service.xml
+            -Dsonar.coverage.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*test*.py,**/conftest.py,**/manage.py,**/asgi.py,**/wsgi.py,**/__init__.py
+            -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/venv/**,**/*.pyc,**/manage.py,**/asgi.py,**/wsgi.py
             -Dsonar.test.inclusions=**/test_*.py,**/tests/**/*.py
+            -Dsonar.cpd.exclusions=**/tests/**,**/migrations/**
             -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.scm.provider=git
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
             -Dsonar.pullrequest.branch=${{ github.head_ref }}
             -Dsonar.pullrequest.base=${{ github.base_ref }}
