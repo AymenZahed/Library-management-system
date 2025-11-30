@@ -23,52 +23,73 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install books_service dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/books_service/requirements.txt
-          pip install pytest pytest-cov coverage xmltodict
-
-      - name: Install user_service dependencies
-        run: |
           pip install -r backend/user_service/requirements.txt
-          pip install pytest pytest-cov coverage xmltodict
+          pip install pytest pytest-cov coverage
 
-      - name: Run tests books_service
+      - name: Run tests with coverage
         run: |
-          cd backend/books_service
-          pytest --cov=books --cov-append --cov-report=term --cov-report=xml:.coverage-books.xml
-          cd ../../..
+          cd backend
 
-      - name: Run tests user_service
-        run: |
-          cd backend/user_service
-          pytest --cov=users --cov-append --cov-report=term --cov-report=xml:.coverage-users.xml
-          cd ../../..
+          # Create .coveragerc for proper coverage configuration
+          cat > .coveragerc << EOF
+          [run]
+          source = 
+            books_service/books
+            user_service/users
+          omit = 
+            */migrations/*
+            */tests/*
+            */__pycache__/*
+            */venv/*
+            *__init__.py
+            *settings.py
+            *asgi.py
+            *wsgi.py
+            *manage.py
+            *admin.py
+            *apps.py
+            *conftest.py
 
-      - name: Combine coverage
-        run: |
-          mv backend/books_service/.coverage backend/.coverage.books
-          mv backend/user_service/.coverage backend/.coverage.users
-          coverage combine backend/.coverage.books backend/.coverage.users
-          coverage xml -o backend/coverage.xml
+          [report]
+          exclude_lines =
+            pragma: no cover
+            def __repr__
+            if self.debug:
+            if settings.DEBUG
+            raise AssertionError
+            raise NotImplementedError
+          EOF
 
-      - name: Upload combined coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: backend/coverage.xml
+          # Run tests for books_service
+          cd books_service
+          coverage run --source=books -m pytest
+          cd ..
+
+          # Run tests for user_service  
+          cd user_service
+          coverage run --source=users -m pytest
+          cd ..
+
+          # Combine coverage from both services
+          coverage combine books_service/.coverage user_service/.coverage
+          coverage xml -o combined-coverage.xml
+
+          # Display coverage report for verification
+          coverage report
 
       - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectBaseDir: ./backend
+          projectBaseDir: .
           args: >
             -Dsonar.projectKey=AymenZahed_Library-management-system
             -Dsonar.organization=library-system-management
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.sources=.
-            -Dsonar.tests=.
-            -Dsonar.test.inclusions=**/tests/**/*.py
+            -Dsonar.python.coverage.reportPaths=backend/combined-coverage.xml
             -Dsonar.qualitygate.wait=true
