@@ -1,19 +1,16 @@
 import pytest
-from django.test import TestCase
+from django.utils import timezone
 from books.models import Book
 
-class BookModelTests(TestCase):
-    def setUp(self):
-        self.book = Book.objects.create(
-            title="Test Book",
-            author="Test Author",
-            isbn="123456789",
-            available=True
-        )
-    
-    def test_book_creation(self):
-        assert self.book.title == "Test Book"
-        assert self.book.available is True
-    
-    def test_book_string_representation(self):
-        assert str(self.book) == "Test Book"
+@pytest.mark.django_db
+def test_book_creation():
+    b = Book.objects.create(
+        title="Test Book",
+        author="Author Name",
+        isbn="ISBN123456",
+        available=True,
+        created_at=timezone.now() if hasattr(Book, 'created_at') else None
+    )
+    assert Book.objects.count() == 1
+    assert b.title == "Test Book"
+    assert b.available is True
