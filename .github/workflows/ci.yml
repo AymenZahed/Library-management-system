@@ -123,23 +123,33 @@ jobs:
           path: backend/${{ matrix.service }}/coverage.xml
 
   combine-coverage:
-    name: 📊 Combinaison des Rapports de Couverture
-    runs-on: ubuntu-latest
-    needs: tests-unitaires
-    steps:
-      - uses: actions/checkout@v4
+  name: 📊 Combinaison des Rapports de Couverture
+  runs-on: ubuntu-latest
+  needs: tests-unitaires
+  steps:
+    - uses: actions/checkout@v4
 
-      - name: 📥 Télécharger tous les coverage
-        uses: actions/download-artifact@v4
-        with:
-          path: coverage-reports
-          pattern: coverage-*
+    - name: 📥 Télécharger tous les coverage
+      uses: actions/download-artifact@v4
+      with:
+        path: coverage-reports
+        pattern: coverage-*
 
-      - name: 📤 Upload combiné
-        uses: actions/upload-artifact@v4
-        with:
-          name: all-coverage-reports
-          path: coverage-reports/
+    - name: 🔧 Préparer coverage pour Sonar
+      run: |
+        mkdir -p sonar-coverage-fixed
+        for dir in coverage-reports/coverage-*; do
+          service=$(basename "$dir" | sed 's/coverage-//')
+          xml_path="$dir/coverage.xml"
+          if [ -f "$xml_path" ]; then
+            sed "s|<source>.</source>|<source>backend/${service}</source>|g" "$xml_path" \
+              > "sonar-coverage-fixed/${service}.xml"
+          else
+            echo "<?xml version='1.0'?><coverage version='7.0'><sources><source>backend/${service}</source></sources><packages/></coverage>" \
+              > "sonar-coverage-fixed/${service}.xml"
+          fi
+        done
+
 
   sonar-analysis:
     name: 🔍 Analyse SonarQube
