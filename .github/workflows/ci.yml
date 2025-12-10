@@ -23,41 +23,41 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          cd backend
-          python -m pip install --upgrade pip
-          pip install -r books_service/requirements.txt
-          pip install -r user_service/requirements.txt
-          pip install pytest pytest-cov coverage
-
-      - name: Run books_service tests
+      # ===========================
+      # BOOKS SERVICE
+      # ===========================
+      - name: Install dependencies (books_service)
         run: |
           cd backend/books_service
-          python -m pytest --cov=books --cov-append --cov-report=term --cov-report=xml:../coverage-books.xml
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
 
-      - name: Run user_service tests
+      - name: Run tests (books_service)
+        run: |
+          cd backend/books_service
+          pytest --cov=books --cov=books_service --cov-report=xml:../../coverage-books.xml
+
+      # ===========================
+      # USER SERVICE
+      # ===========================
+      - name: Install dependencies (user_service)
         run: |
           cd backend/user_service
-          python -m pytest --cov=users --cov-append --cov-report=term --cov-report=xml:../coverage-users.xml
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
 
-      - name: Combine coverage reports
+      - name: Run tests (user_service)
         run: |
-          cd backend
-          # Convert individual coverage files to combined format
-          python -m coverage combine --rcfile=.coveragerc coverage-books.xml coverage-users.xml
-          python -m coverage xml -o coverage.xml
-          python -m coverage report
+          cd backend/user_service
+          pytest --cov=users --cov=user_service --cov-report=xml:../../coverage-users.xml
 
+      # ===========================
+      # SONARCLOUD
+      # ===========================
       - name: SonarCloud Scan
-        uses: sonarsource/sonarqube-scan-action@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: sonarsource/sonarcloud-github-action@master
         with:
-          projectBaseDir: ./backend
-          args: >
-            -Dsonar.projectKey=AymenZahed_Library-management-system
-            -Dsonar.organization=library-system-management
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.qualitygate.wait=true
+          projectBaseDir: .
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
