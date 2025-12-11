@@ -12,7 +12,42 @@ from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
     RegisterSerializer, LoginSerializer
 )
+import requests
+from django.conf import settings
+import logging
 
+logger = logging.getLogger(__name__)
+
+
+
+def send_notification(user_id, notification_type, subject, message, token=None):
+    """Helper to send notifications via Notification Service"""
+    headers = {}
+    if token:
+        # If token doesn't start with 'Bearer ', add it
+        if token.lower().startswith('bearer '):
+            headers['Authorization'] = token
+        else:
+            headers['Authorization'] = f"Bearer {token}"
+            
+    try:
+        response = requests.post(
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/",
+            json={
+                'user_id': user_id,
+                'type': notification_type,
+                'subject': subject,
+                'message': message
+            },
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code != 201:
+            logger.warning(f"Notification service returned {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.error(f"Failed to send notification: {e}")
+        # Don't re-raise, notification failure shouldn't block registration
+        pass
 
 # ============================================
 #    REGISTER VIEW
@@ -38,6 +73,15 @@ class RegisterView(APIView):
         
         # Generate tokens for the new user
         refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        
+        send_notification(
+            user_id=user.id,
+            notification_type='EMAIL',
+            subject='Bienvenue à la bibliothèque!',
+            message=f'Bonjour {user.first_name or user.username}, bienvenue dans notre système de gestion de bibliothèque. Vous pouvez maintenant emprunter jusqu\'à {user.max_loans} livres.',
+            token=access_token
+        )
         
         return Response({
             "message": "Inscription réussie.",
@@ -260,3 +304,37 @@ validate_token = ValidateTokenView.as_view()
 check_permission = CheckPermissionView.as_view()
 me = MeView.as_view()
 user_profile = UserProfileView.as_view()
+
+
+# ============================================
+#    GET USER BY ID (for microservices)
+# ============================================
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserDetailByIDView(APIView):
+    """
+    Get user details by ID.
+    Used by other microservices (e.g. Notification Service) to fetch user info.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            return Response({
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "phone": user.phone_number if hasattr(user, 'phone_number') else None,
+                "is_active": user.is_active,
+                "role": user.role
+            })
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+get_user_by_id = UserDetailByIDView.as_view()

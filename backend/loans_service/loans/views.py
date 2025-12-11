@@ -16,9 +16,42 @@ from .permissions import (
     IsAuthenticated, CanBorrowBook, CanViewLoans, 
     CanViewAllLoans, CanManageLoans, IsLibrarianOrAdmin
 )
+import requests
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+
+def send_notification(user_id, notification_type, subject, message, token=None):
+    """Helper to send notifications via Notification Service"""
+    headers = {}
+    if token:
+        if token.lower().startswith('bearer '):
+            headers['Authorization'] = token
+        else:
+            headers['Authorization'] = f"Bearer {token}"
+        logger.debug(f"Sending notification with token: {token[:20]}...")
+    else:
+        logger.warning("Sending notification WITHOUT token - this may fail!")
+            
+    try:
+        response = requests.post(
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/",
+            json={
+                'user_id': user_id,
+                'type': notification_type,
+                'subject': subject,
+                'message': message
+            },
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code != 201:
+            logger.error(f"Notification failed: {response.status_code} - {response.text}")
+        return response.status_code == 201
+    except Exception as e:
+        logger.error(f"Failed to send notification: {e}")
+        return False
 
 # ============================================
 #    SERVICE CLIENTS
@@ -43,7 +76,7 @@ class UserServiceClient:
         Returns:
             Dict avec les infos de l'utilisateur ou None si erreur
         """
-        url = f"{self.base_url}/users/{user_id}/"
+        url = f"{self.base_url}/api/users/{user_id}/"
         
         try:
             response = requests.get(url, timeout=self.timeout)
@@ -174,7 +207,7 @@ class BookServiceClient:
         
         return book_data.get('available_copies', 0)
     
-    def decrement_stock(self, book_id: int) -> bool:
+    def decrement_stock(self, book_id: int, token: str = None) -> bool:
         """
         Décrémenter le stock d'un livre (emprunt).
         
@@ -185,14 +218,18 @@ class BookServiceClient:
         
         Args:
             book_id: ID du livre
+            token: JWT token for authentication
             
         Returns:
             True si succès, False sinon
         """
         url = f"{self.base_url}/api/books/{book_id}/borrow/"
+        headers = {}
+        if token:
+            headers['Authorization'] = f"Bearer {token}"
         
         try:
-            response = requests.post(url, timeout=self.timeout)
+            response = requests.post(url, headers=headers, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock décrémenté pour book {book_id}")
@@ -205,7 +242,7 @@ class BookServiceClient:
             logger.error(f"❌ Erreur décrémentation stock: {e}")
             return False
     
-    def increment_stock(self, book_id: int) -> bool:
+    def increment_stock(self, book_id: int, token: str = None) -> bool:
         """
         Incrémenter le stock d'un livre (retour).
         
@@ -214,14 +251,18 @@ class BookServiceClient:
         
         Args:
             book_id: ID du livre
+            token: JWT token for authentication
             
         Returns:
             True si succès, False sinon
         """
         url = f"{self.base_url}/api/books/{book_id}/return/"
+        headers = {}
+        if token:
+            headers['Authorization'] = f"Bearer {token}"
         
         try:
-            response = requests.post(url, timeout=self.timeout)
+            response = requests.post(url, headers=headers, timeout=self.timeout)
             
             if response.status_code == 200:
                 logger.info(f"✅ Stock incrémenté pour book {book_id}")
@@ -357,8 +398,9 @@ def create_loan(request):
                 status='ACTIVE'
             )
             
-            # 6. Decrement book stock
-            if not book_client.decrement_stock(book_id):
+            # 6. Decrement book stock (pass auth token)
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            if not book_client.decrement_stock(book_id, token=auth_token):
                 raise Exception("Échec de la décrémentation du stock")
             
             # 7. Create audit log
@@ -370,6 +412,50 @@ def create_loan(request):
             )
             
             serializer = LoanSerializer(loan)
+            
+            # Send professional notification email
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            user_email = user_client.get_user_email(user_id)
+            user_name = f"{book_data.get('title', 'Utilisateur')}"
+            
+            email_subject = '📚 Confirmation d\'emprunt - Bibliothèque'
+            email_message = f"""
+Bonjour,
+
+Nous vous confirmons l'emprunt du livre suivant :
+
+📖 DÉTAILS DU LIVRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Titre : {book_data.get('title')}
+• Auteur : {book_data.get('author', 'Non spécifié')}
+• ISBN : {book_data.get('isbn', 'Non spécifié')}
+• Catégorie : {book_data.get('category', 'Non spécifiée')}
+
+📅 INFORMATIONS D'EMPRUNT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Date d'emprunt : {loan.loan_date.strftime('%d/%m/%Y')}
+• Date de retour prévue : {loan.due_date.strftime('%d/%m/%Y')}
+• Durée : 14 jours
+• Numéro d'emprunt : #{loan.id}
+
+⚠️ RAPPEL IMPORTANT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Merci de retourner le livre avant le {loan.due_date.strftime('%d/%m/%Y')}.
+En cas de retard, une amende de 50 DZD par jour sera appliquée.
+
+Vous pouvez renouveler votre emprunt jusqu'à 2 fois si le livre n'est pas réservé par un autre utilisateur.
+
+Cordialement,
+L'équipe de la Bibliothèque
+            """.strip()
+            
+            send_notification(
+                user_id=user_id,
+                notification_type='EMAIL',
+                subject=email_subject,
+                message=email_message,
+                token=auth_token
+            )
             return Response(
                 {
                     'message': 'Emprunt créé avec succès',
@@ -442,8 +528,9 @@ def return_loan(request, pk):
             
             loan.save()
             
-            # Increment book stock
-            if not book_client.increment_stock(loan.book_id):
+            # Increment book stock (pass auth token)
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            if not book_client.increment_stock(loan.book_id, token=auth_token):
                 raise Exception("Échec de l'incrémentation du stock")
             
             # Create audit log
@@ -470,6 +557,75 @@ def return_loan(request, pk):
                     'days_overdue': days_overdue,
                     'message': f'Amende de {fine_amount} DZD pour {days_overdue} jour(s) de retard'
                 }
+                
+            message = f'Livre retourné avec succès.'
+            if fine_amount > 0:
+                message += f' Amende: {fine_amount} DZD pour {days_overdue} jour(s) de retard.'
+            
+            # Send professional return notification
+            auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            book_data_return = book_client.get_book(loan.book_id)
+            
+            email_subject = '✅ Retour confirmé - Bibliothèque'
+            if fine_amount > 0:
+                email_message = f"""
+Bonjour,
+
+Nous confirmons le retour du livre suivant :
+
+📖 DÉTAILS DU LIVRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Titre : {book_data_return.get('title') if book_data_return else 'Non disponible'}
+• Numéro d'emprunt : #{loan.id}
+
+📅 INFORMATIONS DE RETOUR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Date de retour : {loan.return_date.strftime('%d/%m/%Y')}
+• Date prévue : {loan.due_date.strftime('%d/%m/%Y')}
+• Retard : {days_overdue} jour(s)
+
+💰 AMENDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Montant : {fine_amount} DZD
+• Tarif : 50 DZD par jour de retard
+
+⚠️ RAPPEL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Merci de régler cette amende auprès de la bibliothèque dans les plus brefs délais.
+
+Cordialement,
+L'équipe de la Bibliothèque
+                """.strip()
+            else:
+                email_message = f"""
+Bonjour,
+
+Nous confirmons le retour du livre suivant :
+
+📖 DÉTAILS DU LIVRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Titre : {book_data_return.get('title') if book_data_return else 'Non disponible'}
+• Numéro d'emprunt : #{loan.id}
+
+📅 INFORMATIONS DE RETOUR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Date de retour : {loan.return_date.strftime('%d/%m/%Y')}
+• Date prévue : {loan.due_date.strftime('%d/%m/%Y')}
+• Statut : ✅ Retour dans les délais
+
+Merci d'avoir respecté les délais de retour !
+
+Cordialement,
+L'équipe de la Bibliothèque
+                """.strip()
+            
+            send_notification(
+                user_id=request.user.id,
+                notification_type='EMAIL',
+                subject=email_subject,
+                message=email_message,
+                token=auth_token
+            )
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -552,6 +708,46 @@ def renew_loan(request, pk):
     )
     
     serializer = LoanSerializer(loan)
+    auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+    book_client = BookServiceClient()
+    book_data_renew = book_client.get_book(loan.book_id)
+    
+    email_subject = '🔄 Renouvellement confirmé - Bibliothèque'
+    email_message = f"""
+Bonjour,
+
+Votre emprunt a été renouvelé avec succès !
+
+📖 DÉTAILS DU LIVRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Titre : {book_data_renew.get('title') if book_data_renew else 'Non disponible'}
+• Numéro d'emprunt : #{loan.id}
+
+🔄 INFORMATIONS DE RENOUVELLEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Nombre de renouvellements : {loan.renewal_count}/2
+• Ancienne date de retour : {(loan.due_date - timedelta(days=14)).strftime('%d/%m/%Y')}
+• Nouvelle date de retour : {loan.due_date.strftime('%d/%m/%Y')}
+• Durée supplémentaire : 14 jours
+
+⚠️ RAPPEL IMPORTANT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Merci de retourner le livre avant le {loan.due_date.strftime('%d/%m/%Y')}.
+En cas de retard, une amende de 50 DZD par jour sera appliquée.
+
+{f'Vous pouvez encore renouveler cet emprunt {2 - loan.renewal_count} fois.' if loan.renewal_count < 2 else 'Attention : Vous avez atteint le nombre maximum de renouvellements (2).'}
+
+Cordialement,
+L'équipe de la Bibliothèque
+    """.strip()
+    
+    send_notification(
+        user_id=request.user.id,
+        notification_type='EMAIL',
+        subject=email_subject,
+        message=email_message,
+        token=auth_token
+    )
     return Response(
         {
             'message': 'Emprunt renouvelé avec succès',
@@ -760,4 +956,33 @@ def loan_history(request, pk):
     return Response({
         'loan_id': pk,
         'history': serializer.data
+    })
+    
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsLibrarianOrAdmin])
+def send_overdue_notifications(request):
+    """Send notifications to all users with overdue loans"""
+    today = timezone.now().date()
+    overdue_loans = Loan.objects.filter(
+        due_date__lt=today,
+        status__in=['ACTIVE', 'RENEWED', 'OVERDUE']
+    )
+    
+    sent_count = 0
+    for loan in overdue_loans:
+        days_overdue = (today - loan.due_date).days
+        fine = days_overdue * 50
+        
+        if send_notification(
+            user_id=loan.user_id,
+            notification_type='EMAIL',
+            subject='Emprunt en retard',
+            message=f'Votre emprunt est en retard de {days_overdue} jour(s). Amende: {fine} DZD. Veuillez retourner le livre rapidement.'
+        ):
+            sent_count += 1
+    
+    return Response({
+        'message': f'Notifications envoyées à {sent_count} utilisateur(s)',
+        'total_overdue': overdue_loans.count()
     })

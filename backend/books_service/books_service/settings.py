@@ -87,13 +87,16 @@ WSGI_APPLICATION = 'books_service.wsgi.application'
 
 DATABASES = {
     'default': {
-        # Allow environment override, but provide sensible defaults for local dev/tests
-        'ENGINE': config('DB_ENGINE', default='django.db.backends.sqlite3'),
-        'NAME': config('DB_NAME', default=str(BASE_DIR / 'db.sqlite3')),
-        'USER': config('DB_USER', default=''),
+        'ENGINE': config('DB_ENGINE', default='django.db.backends.mysql'),
+        'NAME': config('DB_NAME', default='loans-database'),
+        'USER': config('DB_USER', default='root'),
         'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default=''),
-        'PORT': config('DB_PORT', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        }
     }
 }
 # ============================================
@@ -127,15 +130,6 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 
 }
-
-# ============================================
-# Disable authentication & permission for pytest
-# ============================================
-import sys
-if 'pytest' in sys.modules:
-    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = []
-    REST_FRAMEWORK['DEFAULT_PERMISSION_CLASSES'] = []
-    
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -185,6 +179,7 @@ SERVICES = {
     'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
     'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
     'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
 }
 
 # ============================================

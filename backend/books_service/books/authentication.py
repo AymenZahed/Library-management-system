@@ -15,7 +15,7 @@ class JWTAuthentication(BaseAuthentication):
         token = parts[1]
 
         try :
-            user_data = self.verify_token_with_auth_service(token)
+            user_data = self._validate_token_with_user_service(token)
             user = RemoteUser(user_data)
             return (user, None)
         except requests.RequestException as e:
@@ -23,9 +23,7 @@ class JWTAuthentication(BaseAuthentication):
         except Exception as e:
             raise AuthenticationFailed(f'Authentication failed: {str(e)}')
         
-
-
-def _validate_token_with_user_service(self, token):
+    def _validate_token_with_user_service(self, token):
         """
         Call the user service to validate the token.
         
