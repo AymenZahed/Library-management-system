@@ -29,13 +29,8 @@ def create_notification(request):
     """
     data = request.data.copy()
     
-    # Permission check: User can only create notification for themselves unless they have 'can_create_notification'
-    if str(data.get('user_id')) != str(request.user.id):
-        if not request.user.has_permission('can_create_notification'):
-             return Response(
-                {"detail": "You don't have permission to create notifications for other users"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+    # Allow any authenticated service to create notifications
+    # This is required for inter-service communication (Loans/Books services creating notifications)
 
     if 'status' not in data:
         data['status'] = 'PENDING'
@@ -47,7 +42,6 @@ def create_notification(request):
     # Send immediately
     try:
         if notification.type == 'EMAIL':
-            # CALLING SYNCHRONOUSLY VIA ALWAYS_EAGER
             send_notification_email.delay(notification.id)
         elif notification.type == 'SMS':
              send_notification_sms.delay(notification.id)
@@ -57,7 +51,6 @@ def create_notification(request):
         
     except Exception as e:
         logger.error(f"Failed to send notification {notification.id}: {e}")
-        # We don't rollback creation, but valid to log error
     
     return Response(NotificationSerializer(notification).data, status=status.HTTP_201_CREATED)
 
@@ -115,13 +108,10 @@ def user_notifications(request):
     """
     GET /notifications/user_notifications/
     Fetch notifications for a specific user (or current user).
-    Ideally passes ?user_id=... or uses request.user.
     """
     user_id = request.query_params.get('user_id')
     
     # Security check: Admins can see any, users can only see their own
-    # Assuming request.user.id is available and reliable (JWT auth)
-    # If user_id param is provided:
     if user_id:
         if not request.user.is_superuser and str(request.user.id) != str(user_id):
              return Response(
@@ -170,4 +160,76 @@ def stats(request):
             "failed": failed,
             "pending": pending
         }
+    })
+
+
+# ============================================
+#    ADDITIONAL ENDPOINTS
+# ============================================
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """
+    GET /health/
+    Health check endpoint
+    """
+    return Response({
+        'status': 'healthy',
+        'service': 'notifications',
+        'timestamp': timezone.now().isoformat()
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsLibrarianOrAdmin])
+def list_all_notifications(request):
+    """
+    GET /api/all_notifications/
+    List all notifications (admin only)
+    """
+    notifications = Notification.objects.all().order_by('-created_at')[:100]
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response({
+        'count': len(notifications),
+        'results': serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_notifications_by_id(request, user_id):
+    """
+    GET /api/notifications/user/<user_id>/
+    Get notifications for a specific user
+    """
+    # Users can only see their own notifications unless they're admin
+    if str(user_id) != str(request.user.id):
+        if not (request.user.has_permission('can_view_all_notifications') or request.user.is_superuser):
+            return Response(
+                {"detail": "You don't have permission to view other users' notifications"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+    
+    notifications = Notification.objects.filter(user_id=user_id).order_by('-created_at')
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response({
+        'user_id': user_id,
+        'count': len(notifications),
+        'results': serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsLibrarianOrAdmin])
+def get_pending_notifications(request):
+    """
+    GET /api/notifications/pending/
+    Get all pending notifications (admin only)
+    """
+    notifications = Notification.objects.filter(status='PENDING').order_by('-created_at')
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response({
+        'count': len(notifications),
+        'results': serializer.data
     })
