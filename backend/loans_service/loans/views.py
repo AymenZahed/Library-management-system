@@ -22,8 +22,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def send_notification(user_id, notification_type, subject, message, token=None):
-    """Helper to send notifications via Notification Service"""
+def send_notification_from_template(template_name, user_id, context, token=None):
+    """Helper to send notifications using templates via Notification Service"""
     headers = {}
     if token:
         if token.lower().startswith('bearer '):
@@ -36,12 +36,12 @@ def send_notification(user_id, notification_type, subject, message, token=None):
             
     try:
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/",
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
             json={
+                'template_id': get_template_id(template_name),
                 'user_id': user_id,
-                'type': notification_type,
-                'subject': subject,
-                'message': message
+                'context': context,
+                'type': 'EMAIL'
             },
             headers=headers,
             timeout=5
@@ -52,6 +52,18 @@ def send_notification(user_id, notification_type, subject, message, token=None):
     except Exception as e:
         logger.error(f"Failed to send notification: {e}")
         return False
+
+
+def get_template_id(template_name):
+    """Map template names to IDs - you can cache this or fetch from DB"""
+    template_map = {
+        'loan_created': 1,
+        'loan_returned_ontime': 2,
+        'loan_returned_late': 3,
+        'loan_renewed': 4,
+        'user_registered': 5
+    }
+    return template_map.get(template_name, 1)
 
 # ============================================
 #    SERVICE CLIENTS
@@ -413,47 +425,21 @@ def create_loan(request):
             
             serializer = LoanSerializer(loan)
             
-            # Send professional notification email
+            # Send professional notification email using template
             auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
-            user_email = user_client.get_user_email(user_id)
-            user_name = f"{book_data.get('title', 'Utilisateur')}"
             
-            email_subject = '📚 Confirmation d\'emprunt - Bibliothèque'
-            email_message = f"""
-Bonjour,
-
-Nous vous confirmons l'emprunt du livre suivant :
-
-📖 DÉTAILS DU LIVRE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Titre : {book_data.get('title')}
-• Auteur : {book_data.get('author', 'Non spécifié')}
-• ISBN : {book_data.get('isbn', 'Non spécifié')}
-• Catégorie : {book_data.get('category', 'Non spécifiée')}
-
-📅 INFORMATIONS D'EMPRUNT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Date d'emprunt : {loan.loan_date.strftime('%d/%m/%Y')}
-• Date de retour prévue : {loan.due_date.strftime('%d/%m/%Y')}
-• Durée : 14 jours
-• Numéro d'emprunt : #{loan.id}
-
-⚠️ RAPPEL IMPORTANT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Merci de retourner le livre avant le {loan.due_date.strftime('%d/%m/%Y')}.
-En cas de retard, une amende de 50 DZD par jour sera appliquée.
-
-Vous pouvez renouveler votre emprunt jusqu'à 2 fois si le livre n'est pas réservé par un autre utilisateur.
-
-Cordialement,
-L'équipe de la Bibliothèque
-            """.strip()
-            
-            send_notification(
+            send_notification_from_template(
+                template_name='loan_created',
                 user_id=user_id,
-                notification_type='EMAIL',
-                subject=email_subject,
-                message=email_message,
+                context={
+                    'book_title': book_data.get('title'),
+                    'book_author': book_data.get('author', 'Non spécifié'),
+                    'book_isbn': book_data.get('isbn', 'Non spécifié'),
+                    'book_category': book_data.get('category', 'Non spécifiée'),
+                    'loan_date': loan.loan_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
+                    'loan_id': loan.id
+                },
                 token=auth_token
             )
             return Response(
@@ -558,74 +544,42 @@ def return_loan(request, pk):
                     'message': f'Amende de {fine_amount} DZD pour {days_overdue} jour(s) de retard'
                 }
                 
-            message = f'Livre retourné avec succès.'
-            if fine_amount > 0:
-                message += f' Amende: {fine_amount} DZD pour {days_overdue} jour(s) de retard.'
-            
-            # Send professional return notification
+            # Send professional return notification using templates
             auth_token = request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
             book_data_return = book_client.get_book(loan.book_id)
             
-            email_subject = '✅ Retour confirmé - Bibliothèque'
             if fine_amount > 0:
-                email_message = f"""
-Bonjour,
-
-Nous confirmons le retour du livre suivant :
-
-📖 DÉTAILS DU LIVRE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Titre : {book_data_return.get('title') if book_data_return else 'Non disponible'}
-• Numéro d'emprunt : #{loan.id}
-
-📅 INFORMATIONS DE RETOUR
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Date de retour : {loan.return_date.strftime('%d/%m/%Y')}
-• Date prévue : {loan.due_date.strftime('%d/%m/%Y')}
-• Retard : {days_overdue} jour(s)
-
-💰 AMENDE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Montant : {fine_amount} DZD
-• Tarif : 50 DZD par jour de retard
-
-⚠️ RAPPEL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Merci de régler cette amende auprès de la bibliothèque dans les plus brefs délais.
-
-Cordialement,
-L'équipe de la Bibliothèque
-                """.strip()
+                # Use late return template
+                context = {
+                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
+                    'loan_id': loan.id,
+                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y'),
+                    'days_overdue': days_overdue,
+                    'fine_amount': fine_amount
+                }
+                logger.info(f"Sending late return notification with context: {context}")
+                send_notification_from_template(
+                    template_name='loan_returned_late',
+                    user_id=request.user.id,
+                    context=context,
+                    token=auth_token
+                )
             else:
-                email_message = f"""
-Bonjour,
-
-Nous confirmons le retour du livre suivant :
-
-📖 DÉTAILS DU LIVRE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Titre : {book_data_return.get('title') if book_data_return else 'Non disponible'}
-• Numéro d'emprunt : #{loan.id}
-
-📅 INFORMATIONS DE RETOUR
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Date de retour : {loan.return_date.strftime('%d/%m/%Y')}
-• Date prévue : {loan.due_date.strftime('%d/%m/%Y')}
-• Statut : ✅ Retour dans les délais
-
-Merci d'avoir respecté les délais de retour !
-
-Cordialement,
-L'équipe de la Bibliothèque
-                """.strip()
-            
-            send_notification(
-                user_id=request.user.id,
-                notification_type='EMAIL',
-                subject=email_subject,
-                message=email_message,
-                token=auth_token
-            )
+                # Use on-time return template
+                context = {
+                    'book_title': book_data_return.get('title') if book_data_return else 'Non disponible',
+                    'loan_id': loan.id,
+                    'return_date': loan.return_date.strftime('%d/%m/%Y'),
+                    'due_date': loan.due_date.strftime('%d/%m/%Y')
+                }
+                logger.info(f"Sending on-time return notification with context: {context}")
+                send_notification_from_template(
+                    template_name='loan_returned_ontime',
+                    user_id=request.user.id,
+                    context=context,
+                    token=auth_token
+                )
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -712,40 +666,20 @@ def renew_loan(request, pk):
     book_client = BookServiceClient()
     book_data_renew = book_client.get_book(loan.book_id)
     
-    email_subject = '🔄 Renouvellement confirmé - Bibliothèque'
-    email_message = f"""
-Bonjour,
-
-Votre emprunt a été renouvelé avec succès !
-
-📖 DÉTAILS DU LIVRE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Titre : {book_data_renew.get('title') if book_data_renew else 'Non disponible'}
-• Numéro d'emprunt : #{loan.id}
-
-🔄 INFORMATIONS DE RENOUVELLEMENT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Nombre de renouvellements : {loan.renewal_count}/2
-• Ancienne date de retour : {(loan.due_date - timedelta(days=14)).strftime('%d/%m/%Y')}
-• Nouvelle date de retour : {loan.due_date.strftime('%d/%m/%Y')}
-• Durée supplémentaire : 14 jours
-
-⚠️ RAPPEL IMPORTANT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Merci de retourner le livre avant le {loan.due_date.strftime('%d/%m/%Y')}.
-En cas de retard, une amende de 50 DZD par jour sera appliquée.
-
-{f'Vous pouvez encore renouveler cet emprunt {2 - loan.renewal_count} fois.' if loan.renewal_count < 2 else 'Attention : Vous avez atteint le nombre maximum de renouvellements (2).'}
-
-Cordialement,
-L'équipe de la Bibliothèque
-    """.strip()
+    old_due_date = (loan.due_date - timedelta(days=14)).strftime('%d/%m/%Y')
+    renewal_message = f'Vous pouvez encore renouveler cet emprunt {2 - loan.renewal_count} fois.' if loan.renewal_count < 2 else 'Attention : Vous avez atteint le nombre maximum de renouvellements (2).'
     
-    send_notification(
+    send_notification_from_template(
+        template_name='loan_renewed',
         user_id=request.user.id,
-        notification_type='EMAIL',
-        subject=email_subject,
-        message=email_message,
+        context={
+            'book_title': book_data_renew.get('title') if book_data_renew else 'Non disponible',
+            'loan_id': loan.id,
+            'renewal_count': loan.renewal_count,
+            'old_due_date': old_due_date,
+            'new_due_date': loan.due_date.strftime('%d/%m/%Y'),
+            'renewal_message': renewal_message
+        },
         token=auth_token
     )
     return Response(

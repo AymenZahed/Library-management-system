@@ -55,7 +55,7 @@ def create_notification(request):
     return Response(NotificationSerializer(notification).data, status=status.HTTP_201_CREATED)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, CanCreateNotification])
+@permission_classes([IsAuthenticated])  # Allow any authenticated service to use templates
 def send_from_template(request):
     """
     POST /notifications/send_from_template/
@@ -77,6 +77,9 @@ def send_from_template(request):
         
         subject = subject_template.render(Context(ctx))
         message = message_template.render(Context(ctx))
+        
+        logger.info(f"Template '{template.name}' rendered. Message length: {len(message)} chars")
+        logger.debug(f"Rendered message: {message[:200]}...")  # Log first 200 chars
     except (TemplateSyntaxError, Exception) as e:
         logger.error(f"Template rendering error: {e}")
         return Response({"detail": f"Template error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)

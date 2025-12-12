@@ -20,11 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 
-def send_notification(user_id, notification_type, subject, message, token=None):
-    """Helper to send notifications via Notification Service"""
+def send_notification_from_template(template_name, user_id, context, token=None):
+    """Helper to send notifications using templates via Notification Service"""
     headers = {}
     if token:
-        # If token doesn't start with 'Bearer ', add it
         if token.lower().startswith('bearer '):
             headers['Authorization'] = token
         else:
@@ -32,12 +31,12 @@ def send_notification(user_id, notification_type, subject, message, token=None):
             
     try:
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/",
+            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
             json={
+                'template_id': get_template_id(template_name),
                 'user_id': user_id,
-                'type': notification_type,
-                'subject': subject,
-                'message': message
+                'context': context,
+                'type': 'EMAIL'
             },
             headers=headers,
             timeout=5
@@ -48,6 +47,19 @@ def send_notification(user_id, notification_type, subject, message, token=None):
         logger.error(f"Failed to send notification: {e}")
         # Don't re-raise, notification failure shouldn't block registration
         pass
+
+
+def get_template_id(template_name):
+    """Map template names to IDs"""
+    template_map = {
+        'user_registered': 5,  # This is the 5th template
+        'loan_created': 1,
+        'loan_returned_ontime': 2,
+        'loan_returned_late': 3,
+        'loan_renewed': 4
+    }
+    return template_map.get(template_name, 1)
+
 
 # ============================================
 #    REGISTER VIEW
@@ -75,11 +87,15 @@ class RegisterView(APIView):
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         
-        send_notification(
+        # Send welcome email using template
+        send_notification_from_template(
+            template_name='user_registered',
             user_id=user.id,
-            notification_type='EMAIL',
-            subject='Bienvenue à la bibliothèque!',
-            message=f'Bonjour {user.first_name or user.username}, bienvenue dans notre système de gestion de bibliothèque. Vous pouvez maintenant emprunter jusqu\'à {user.max_loans} livres.',
+            context={
+                'user_name': user.first_name or user.username,
+                'user_email': user.email,
+                'user_role': user.role
+            },
             token=access_token
         )
         
