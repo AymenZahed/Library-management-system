@@ -4,13 +4,14 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from .models import Book, BookReview
-from django.db.models import Q
+from django.db.models import Q, Avg
 from .serializers import BookSerializer, BookReviewSerializer
 import html
 from .permissions import (
     CanViewBooks, CanAddBook, CanEditBook, 
     CanDeleteBook, CanBorrowBook, IsLibrarianOrAdmin
 )
+from .events import (
     publish_book_created,
     publish_book_updated,
     publish_book_deleted
@@ -225,13 +226,42 @@ def create_review(request, id):
     except Book.DoesNotExist:
         return Response({'error': 'Livre non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
-    data = dict(request.data)
-    data['book_id'] = id
-    serializer = BookReviewSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    data = request.data.copy()
+    user_id = data.get('user_id')
+    rating = data.get('rating')
+    comment = data.get('comment', '')
+
+    if not user_id or not rating:
+        return Response(
+            {'error': 'user_id and rating are required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Use update_or_create to handle both creation and updates
+    review, created = BookReview.objects.update_or_create(
+        book_id=id,
+        user_id=user_id,
+        defaults={
+            'rating': rating,
+            'comment': comment
+        }
+    )
+
+    # Recalculate average rating
+    book = Book.objects.get(id=id)
+    reviews = BookReview.objects.filter(book_id=id)
+    avg_rating = reviews.aggregate(Avg('rating'))['rating__avg']
+    
+    if avg_rating:
+        book.average_rating = round(avg_rating, 2)
+    else:
+        book.average_rating = 0.00
+    
+    book.save()
+
+    serializer = BookReviewSerializer(review)
+    status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return Response(serializer.data, status=status_code)
 
 
 @api_view(['GET'])
