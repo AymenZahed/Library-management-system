@@ -6,11 +6,25 @@ from django.core.validators import validate_email
 from django.conf import settings
 import logging
 import requests
+import sys
+import os
 
 from .models import Notification, NotificationLog
 
 logger = logging.getLogger(__name__)
 
+def get_service_url(service_name, default_url):
+    """Helper to get service URL with fallback"""
+    try:
+        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
+        if common_path not in sys.path:
+            sys.path.insert(0, common_path)
+        from consul_utils import get_service
+        
+        url = get_service(service_name)
+        return url if url else default_url
+    except ImportError:
+        return default_url
 
 def get_user_email(user_id):
     """
@@ -21,10 +35,13 @@ def get_user_email(user_id):
     """
     try:
         # Call User Service API
-        user_service_url = settings.USER_SERVICE_URL
+        base_url = get_service_url('user-service', getattr(settings, 'USER_SERVICE_URL', None) or os.environ.get('USER_SERVICE_URL'))
+        if not base_url:
+            raise ValueError("User Service URL not found")
+            
         response = requests.get(
-            f"{user_service_url}/api/users/{user_id}/",
-            timeout=settings.USER_SERVICE_TIMEOUT
+            f"{base_url}/api/users/{user_id}/",
+            timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         
         if response.status_code == 200:
@@ -55,10 +72,13 @@ def get_user_phone(user_id):
     Fetch user phone number from the User Service API.
     """
     try:
-        user_service_url = settings.USER_SERVICE_URL
+        base_url = get_service_url('user-service', getattr(settings, 'USER_SERVICE_URL', None) or os.environ.get('USER_SERVICE_URL'))
+        if not base_url:
+            raise ValueError("User Service URL not found")
+            
         response = requests.get(
-            f"{user_service_url}/api/users/{user_id}/",
-            timeout=settings.USER_SERVICE_TIMEOUT
+            f"{base_url}/api/users/{user_id}/",
+            timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         
         if response.status_code == 200:

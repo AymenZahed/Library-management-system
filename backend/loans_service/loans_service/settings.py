@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
+ALLOWED_HOSTS = ['*']
 
 # ============================================
 #    APPLICATIONS
@@ -148,12 +148,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #    MICROSERVICES CONFIGURATION
 # ============================================
 
-SERVICES = {
-    'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
-    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
-    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
-    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
-}
+# SERVICES dictionary removed in favor of Consul service discovery
+# See common/consul_utils.py get_service()
+
 
 # ============================================
 #    LOGGING CONFIGURATION

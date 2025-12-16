@@ -29,6 +29,26 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+
+# ============================================
+#    SERVICE DISCOVERY UTILS
+# ============================================
+def get_service_url(service_name, default_url):
+    """Helper to get service URL with fallback"""
+    try:
+        import sys
+        import os
+        from django.conf import settings
+        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
+        if common_path not in sys.path:
+            sys.path.insert(0, common_path)
+        from consul_utils import get_service
+        
+        url = get_service(service_name)
+        return url if url else default_url
+    except ImportError:
+        return default_url
+
 def send_notification_from_template(template_name, user_id, context, token=None):
     """Helper to send notifications using templates via Notification Service"""
     headers = {}
@@ -42,8 +62,13 @@ def send_notification_from_template(template_name, user_id, context, token=None)
         logger.warning("Sending notification WITHOUT token - this may fail!")
             
     try:
+        base_url = get_service_url('notification-service', os.environ.get('NOTIFICATION_SERVICE_URL'))
+        if not base_url:
+             logger.warning("Notification service URL not found")
+             return False
+
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            f"{base_url}/api/notifications/send_from_template/",
             json={
                 'template_id': get_template_id(template_name),
                 'user_id': user_id,
@@ -82,7 +107,9 @@ class UserServiceClient:
     """
     
     def __init__(self):
-        self.base_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
+        self.base_url = get_service_url('user-service', os.environ.get('USER_SERVICE_URL'))
+        if not self.base_url:
+            logger.error("User Service URL not found")
         self.timeout = 10  # secondes
     
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -157,7 +184,9 @@ class BookServiceClient:
     """
     
     def __init__(self):
-        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.base_url = get_service_url('books-service', os.environ.get('BOOK_SERVICE_URL'))
+        if not self.base_url:
+            logger.error("Books Service URL not found")
         self.timeout = 10
     
     def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:
@@ -299,15 +328,13 @@ class BookServiceClient:
 #    HEALTH CHECK
 # ============================================
 
+from django.http import JsonResponse
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
     """Health check endpoint."""
-    return Response({
-        'status': 'healthy',
-        'service': 'loans',
-        'timestamp': timezone.now()
-    })
+    return JsonResponse({"status": "ok"}, status=200)
 
 
 # ============================================

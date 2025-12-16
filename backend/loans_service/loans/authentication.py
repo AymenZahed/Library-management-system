@@ -62,7 +62,31 @@ class JWTAuthentication(BaseAuthentication):
         Raises:
             AuthenticationFailed: if token is invalid
         """
-        user_service_url = settings.SERVICES.get('USER_SERVICE', 'http://localhost:8001')
+        # Import dynamically to avoid circular imports
+        try:
+            import sys
+            import os
+            from django.conf import settings
+            common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
+            if common_path not in sys.path:
+                sys.path.insert(0, common_path)
+            from consul_utils import get_service
+            
+            user_service_url = get_service('user-service')
+            user_service_url = get_service('user-service')
+            if not user_service_url:
+                user_service_url = os.environ.get('USER_SERVICE_URL')
+                
+            if not user_service_url:
+                # Last resort from settings (not SERVICES dict)
+                user_service_url = getattr(settings, 'USER_SERVICE_URL', None)
+
+        except ImportError:
+            user_service_url = os.environ.get('USER_SERVICE_URL')
+            
+        if not user_service_url:
+             raise AuthenticationFailed('User service URL not found')
+
         validate_url = f"{user_service_url}/api/users/validate/"
         
         try:

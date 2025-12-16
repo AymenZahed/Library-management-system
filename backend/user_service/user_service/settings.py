@@ -145,8 +145,8 @@ AUTH_USER_MODEL = "users.User"
 
 # Service URLs (for inter-service communication)
 SERVICES = {
-    'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
-    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
-    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
-    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
+    'USER_SERVICE': config('USER_SERVICE_URL', default=None),
+    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default=None),
+    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default=None),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default=None),
 }

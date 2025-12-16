@@ -26,7 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = ['*']
 
 # ============================================
 # INSTALLED APPS
@@ -216,10 +216,10 @@ CELERY_BEAT_SCHEDULE = {
 # ============================================
 
 SERVICES = {
-    'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
-    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
-    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
-    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
+    'USER_SERVICE': config('USER_SERVICE_URL', default=None),
+    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default=None),
+    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default=None),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default=None),
 }
 
 # Backward compatibility aliases

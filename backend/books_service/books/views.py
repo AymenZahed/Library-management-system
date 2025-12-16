@@ -19,6 +19,7 @@ from .events import (
 import requests
 from django.conf import settings
 import logging
+from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def health_check(request):
-    """Health check endpoint for monitoring."""
-    return Response({'status': 'healthy', 'service': 'books'})
+def health_check ( request ) :
+    return JsonResponse({" status ": "ok"} , status=200)
+
 
 
 # GET /books

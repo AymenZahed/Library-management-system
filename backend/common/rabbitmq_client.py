@@ -6,6 +6,8 @@ Handles connection, publishing, and consuming messages
 import pika
 import json
 import logging
+import os
+import sys
 from typing import Callable, Dict, Any
 from decouple import config
 
@@ -16,8 +18,38 @@ class RabbitMQClient:
     """RabbitMQ Client for publishing and consuming messages"""
     
     def __init__(self):
-        self.host = config('RABBITMQ_HOST', default='localhost')
-        self.port = config('RABBITMQ_PORT', default=5672, cast=int)
+        # Try to discover RabbitMQ from Consul
+        rabbitmq_host = None
+        rabbitmq_port = None
+        
+        try:
+            # Import consul_utils dynamically
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            if current_dir not in sys.path:
+                sys.path.insert(0, current_dir)
+            from consul_utils import get_service
+            
+            rabbitmq_url = get_service('rabbitmq')
+            if rabbitmq_url:
+                # Parse URL to extract host and port
+                if ':' in rabbitmq_url:
+                    rabbitmq_host, port_str = rabbitmq_url.split(':')
+                    rabbitmq_port = int(port_str)
+                else:
+                    rabbitmq_host = rabbitmq_url
+                    rabbitmq_port = 5672
+                logger.info(f"✅ Discovered RabbitMQ from Consul: {rabbitmq_host}:{rabbitmq_port}")
+        except Exception as e:
+            logger.warning(f"Could not discover RabbitMQ from Consul: {e}")
+        
+        # Fallback to environment variables or defaults
+        self.host = rabbitmq_host or config('RABBITMQ_HOST', default=os.environ.get('RABBITMQ_HOST'))
+        self.port = rabbitmq_port or config('RABBITMQ_PORT', default=5672, cast=int)
+        
+        if not self.host:
+            logger.error("RabbitMQ host not found via Consul or environment variables")
+            self.host = 'localhost'  # Last resort fallback
+        
         self.username = config('RABBITMQ_USER', default='guest')
         self.password = config('RABBITMQ_PASSWORD', default='guest')
         self.virtual_host = config('RABBITMQ_VHOST', default='/')

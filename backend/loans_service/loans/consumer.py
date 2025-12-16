@@ -18,6 +18,7 @@ from django.db import transaction
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../common'))
 
 from rabbitmq_client import get_rabbitmq_client
+from consul_utils import get_service
 from loans.serializers import LoanCreateSerializer
 from loans.models import Loan, LoanHistory
 from loans.events import (
@@ -33,7 +34,9 @@ logger = logging.getLogger(__name__)
 
 class UserServiceClient:
     def __init__(self):
-        self.base_url = os.getenv('USER_SERVICE_URL', 'http://localhost:8001')
+        self.base_url = get_service('user-service') or os.getenv('USER_SERVICE_URL')
+        if not self.base_url:
+            logger.error("User Service URL not found via Consul or ENV")
         self.timeout = 10
     
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -51,7 +54,9 @@ class UserServiceClient:
 
 class BookServiceClient:
     def __init__(self):
-        self.base_url = os.getenv('BOOK_SERVICE_URL', 'http://localhost:8002')
+        self.base_url = get_service('book-service') or os.getenv('BOOK_SERVICE_URL')
+        if not self.base_url:
+            logger.error("Book Service URL not found via Consul or ENV")
         self.timeout = 10
     
     def get_book(self, book_id: int) -> Optional[Dict[str, Any]]:

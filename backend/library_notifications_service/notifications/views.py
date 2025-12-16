@@ -170,6 +170,8 @@ def stats(request):
 #    ADDITIONAL ENDPOINTS
 # ============================================
 
+from django.http import JsonResponse
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
@@ -177,11 +179,7 @@ def health_check(request):
     GET /health/
     Health check endpoint
     """
-    return Response({
-        'status': 'healthy',
-        'service': 'notifications',
-        'timestamp': timezone.now().isoformat()
-    })
+    return JsonResponse({"status": "ok"}, status=200)
 
 
 @api_view(['GET'])

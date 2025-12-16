@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -21,6 +22,29 @@ logger = logging.getLogger(__name__)
 
 
 
+from django.http import JsonResponse
+import sys
+import os
+
+def get_service_url(service_name, default_url):
+    """Helper to get service URL with fallback"""
+    try:
+        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
+        if common_path not in sys.path:
+            sys.path.insert(0, common_path)
+        from consul_utils import get_service
+        
+        url = get_service(service_name)
+        return url if url else default_url
+    except ImportError:
+        return default_url
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check endpoint."""
+    return JsonResponse({"status": "ok"}, status=200)
+
 def send_notification_from_template(template_name, user_id, context, token=None):
     """Helper to send notifications using templates via Notification Service"""
     headers = {}
@@ -31,8 +55,13 @@ def send_notification_from_template(template_name, user_id, context, token=None)
             headers['Authorization'] = f"Bearer {token}"
             
     try:
+        base_url = get_service_url('notification-service', os.environ.get('NOTIFICATION_SERVICE_URL'))
+        if not base_url:
+             logger.warning("Notification service URL not found, skipping notification")
+             return
+
         response = requests.post(
-            f"{settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')}/api/notifications/send_from_template/",
+            f"{base_url}/api/notifications/send_from_template/",
             json={
                 'template_id': get_template_id(template_name),
                 'user_id': user_id,
