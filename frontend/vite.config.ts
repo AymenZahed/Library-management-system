@@ -112,6 +112,31 @@ function setupShutdownHandlers() {
   });
 }
 
+// Service URL cache with background refresh
+const serviceCache = new Map<string, string>();
+let refreshInterval: NodeJS.Timeout | null = null;
+
+// Background refresh function
+async function refreshServiceCache() {
+  const services = [
+    { name: "user-service", fallback: process.env.USER_SERVICE_URL || "http://localhost:8001" },
+    { name: "books-service", fallback: process.env.BOOK_SERVICE_URL || "http://localhost:8002" },
+    { name: "loans-service", fallback: process.env.LOANS_SERVICE_URL || "http://localhost:8003" },
+    { name: "notification-service", fallback: process.env.NOTIFICATIONS_SERVICE_URL || "http://localhost:8004" },
+  ];
+
+  for (const service of services) {
+    const url = await getServiceUrl(service.name);
+    const newUrl = url || service.fallback;
+    const oldUrl = serviceCache.get(service.name);
+
+    if (newUrl !== oldUrl) {
+      console.log(`🔄 Service ${service.name} address updated: ${oldUrl || 'initial'} -> ${newUrl}`);
+      serviceCache.set(service.name, newUrl);
+    }
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
   // Register with Consul in development mode
@@ -120,43 +145,45 @@ export default defineConfig(async ({ mode }) => {
     setupShutdownHandlers();
   }
 
-  // Discover backend services
-  const userServiceUrl = await getServiceUrl("user-service") || process.env.USER_SERVICE_URL || "http://localhost:8001";
-  const booksServiceUrl = await getServiceUrl("book-service") || process.env.BOOK_SERVICE_URL || "http://localhost:8002";
-  const loansServiceUrl = await getServiceUrl("loans-service") || process.env.LOANS_SERVICE_URL || "http://localhost:8003";
-  const notificationsServiceUrl = await getServiceUrl("notification-service") || process.env.NOTIFICATIONS_SERVICE_URL || "http://localhost:8004";
+  // Initial service discovery
+  await refreshServiceCache();
 
-  console.log("🔍 Discovered services:");
+  // Start background refresh every 5 seconds
+  refreshInterval = setInterval(refreshServiceCache, 5000);
+
+  const userServiceUrl = serviceCache.get("user-service")!;
+  const booksServiceUrl = serviceCache.get("books-service")!;
+  const loansServiceUrl = serviceCache.get("loans-service")!;
+  const notificationsServiceUrl = serviceCache.get("notification-service")!;;
+
+  console.log("🔍 Initial service discovery:");
   console.log(`  User Service: ${userServiceUrl}`);
   console.log(`  Books Service: ${booksServiceUrl}`);
   console.log(`  Loans Service: ${loansServiceUrl}`);
   console.log(`  Notifications Service: ${notificationsServiceUrl}`);
+
+  // Create dynamic proxy with synchronous router
+  const createDynamicProxy = (serviceName: string) => {
+    return {
+      target: serviceCache.get(serviceName)!,
+      changeOrigin: true,
+      secure: false,
+      router: () => {
+        // Synchronous lookup from cache
+        return serviceCache.get(serviceName)!;
+      },
+    };
+  };
 
   return {
     server: {
       host: "::",
       port: SERVICE_PORT,
       proxy: {
-        "/api/users": {
-          target: userServiceUrl,
-          changeOrigin: true,
-          secure: false,
-        },
-        "/api/books": {
-          target: booksServiceUrl,
-          changeOrigin: true,
-          secure: false,
-        },
-        "/api/loans": {
-          target: loansServiceUrl,
-          changeOrigin: true,
-          secure: false,
-        },
-        "/api/notifications": {
-          target: notificationsServiceUrl,
-          changeOrigin: true,
-          secure: false,
-        },
+        "/api/users": createDynamicProxy("user-service"),
+        "/api/books": createDynamicProxy("books-service"),
+        "/api/loans": createDynamicProxy("loans-service"),
+        "/api/notifications": createDynamicProxy("notification-service"),
       },
     },
     plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
