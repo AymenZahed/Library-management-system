@@ -3,6 +3,12 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 
+
+from common.consul_client import ConsulClient
+import logging
+
+logger = logging.getLogger(__name__)
+
 class JWTAuthentication(BaseAuthentication):
     def authenticate(self, request):
         auth_header = request.headers.get('Authorization')
@@ -33,32 +39,12 @@ class JWTAuthentication(BaseAuthentication):
         Raises:
             AuthenticationFailed: If token is invalid
         """
-        # Import dynamically to avoid circular imports or sys.path issues at module level
-        try:
-            import sys
-            import os
-            from django.conf import settings
-            common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
-            if common_path not in sys.path:
-                sys.path.insert(0, common_path)
-            from consul_utils import get_service
-            
-            user_service_url = get_service('user-service')
-            if not user_service_url:
-                # Fallback to env var or raise error, do not use hardcoded localhost
-                user_service_url = os.environ.get('USER_SERVICE_URL')
-                
-            if not user_service_url:
-                 # Last resort logging
-                 from django.conf import settings
-                 # Check if defined in settings as a fallback variable (not in SERVICES dict)
-                 user_service_url = getattr(settings, 'USER_SERVICE_URL', None)
-
-        except ImportError:
-            user_service_url = os.environ.get('USER_SERVICE_URL')
-            
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
         if not user_service_url:
-             raise AuthenticationFailed('User service URL not found')
+            user_service_url = settings.SERVICES.get('USER_SERVICE', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
 
         validate_url = f"{user_service_url}/api/users/validate/"
         

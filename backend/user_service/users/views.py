@@ -7,7 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-
+from django.http import JsonResponse
 from .models import User, UserProfile
 from .serializers import (
     UserSerializer, UserDetailSerializer, UserProfileSerializer,
@@ -18,32 +18,9 @@ import requests
 from django.conf import settings
 import logging
 
-logger = logging.getLogger(__name__)
 
 
-
-from django.http import JsonResponse
-import sys
-import os
-
-def get_service_url(service_name, default_url):
-    """Helper to get service URL with fallback"""
-    try:
-        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
-        if common_path not in sys.path:
-            sys.path.insert(0, common_path)
-        from consul_utils import get_service
-        
-        url = get_service(service_name)
-        return url if url else default_url
-    except ImportError:
-        return default_url
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def health_check(request):
-    """Health check endpoint."""
-    return JsonResponse({"status": "ok"}, status=200)
+from common.consul_client import ConsulClient
 
 def send_notification_from_template(template_name, user_id, context, token=None):
     """Helper to send notifications using templates via Notification Service"""
@@ -55,13 +32,16 @@ def send_notification_from_template(template_name, user_id, context, token=None)
             headers['Authorization'] = f"Bearer {token}"
             
     try:
-        base_url = get_service_url('notification-service', os.environ.get('NOTIFICATION_SERVICE_URL'))
-        if not base_url:
-             logger.warning("Notification service URL not found, skipping notification")
-             return
-
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        service_url = consul.get_service_url('notification-service')
+        
+        if not service_url:
+            service_url = settings.SERVICES.get('NOTIFICATION_SERVICE', 'http://localhost:8004')
+            logger.warning(f"Consul resolution failed for notification-service, using fallback: {service_url}")
+            
         response = requests.post(
-            f"{base_url}/api/notifications/send_from_template/",
+            f"{service_url}/api/notifications/send_from_template/",
             json={
                 'template_id': get_template_id(template_name),
                 'user_id': user_id,
@@ -380,3 +360,9 @@ class UserDetailByIDView(APIView):
             )
 
 get_user_by_id = UserDetailByIDView.as_view()
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Health check endpoint."""
+    return JsonResponse({"status": "ok"}, status=200)

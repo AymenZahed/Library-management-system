@@ -6,41 +6,34 @@ from django.core.validators import validate_email
 from django.conf import settings
 import logging
 import requests
-import sys
-import os
 
 from .models import Notification, NotificationLog
 
 logger = logging.getLogger(__name__)
 
-def get_service_url(service_name, default_url):
-    """Helper to get service URL with fallback"""
-    try:
-        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
-        if common_path not in sys.path:
-            sys.path.insert(0, common_path)
-        from consul_utils import get_service
-        
-        url = get_service(service_name)
-        return url if url else default_url
-    except ImportError:
-        return default_url
+
+
+from common.consul_client import ConsulClient
 
 def get_user_email(user_id):
     """
     Fetch user email from the User Service API.
     
     This integrates with your microservices architecture by calling
-    the User Service to get real-time user data.
+    the User Service to get real-time user data using Consul for discovery.
     """
     try:
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
+        if not user_service_url:
+            user_service_url = getattr(settings, 'USER_SERVICE_URL', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
+
         # Call User Service API
-        base_url = get_service_url('user-service', getattr(settings, 'USER_SERVICE_URL', None) or os.environ.get('USER_SERVICE_URL'))
-        if not base_url:
-            raise ValueError("User Service URL not found")
-            
         response = requests.get(
-            f"{base_url}/api/users/{user_id}/",
+            f"{user_service_url}/api/users/{user_id}/",
             timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         
@@ -72,12 +65,16 @@ def get_user_phone(user_id):
     Fetch user phone number from the User Service API.
     """
     try:
-        base_url = get_service_url('user-service', getattr(settings, 'USER_SERVICE_URL', None) or os.environ.get('USER_SERVICE_URL'))
-        if not base_url:
-            raise ValueError("User Service URL not found")
-            
+        # Resolve service URL via Consul
+        consul = ConsulClient(host=settings.CONSUL_HOST, port=settings.CONSUL_PORT)
+        user_service_url = consul.get_service_url('user-service')
+        
+        if not user_service_url:
+            user_service_url = getattr(settings, 'USER_SERVICE_URL', 'http://localhost:8001')
+            logger.warning(f"Consul resolution failed for user-service, using fallback: {user_service_url}")
+
         response = requests.get(
-            f"{base_url}/api/users/{user_id}/",
+            f"{user_service_url}/api/users/{user_id}/",
             timeout=getattr(settings, 'USER_SERVICE_TIMEOUT', 5)
         )
         

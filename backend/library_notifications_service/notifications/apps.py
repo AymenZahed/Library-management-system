@@ -1,7 +1,5 @@
 from django.apps import AppConfig
-import sys
-import os
-from django.conf import settings
+
 
 class NotificationsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
@@ -12,54 +10,50 @@ class NotificationsConfig(AppConfig):
         """
         Create notification templates when the app starts.
         """
-        
-        # Don't run this during static file collection or unrelated management commands
-        if os.environ.get('RUN_MAIN') != 'true' and 'runserver' not in sys.argv:
-            return
-
-        # Add common directory to path for consul_utils import
-        common_path = os.path.abspath(os.path.join(settings.BASE_DIR, '..', 'common'))
-        if common_path not in sys.path:
-            sys.path.insert(0, common_path)
-            
-        try:
-            from consul_utils import register_service, deregister_service
-            
-            # Service configuration
-            service_name = 'notification-service'
-            try:
-                # Try to get port from runserver command or env var
-                service_port = int(os.environ.get('SERVICE_PORT', 8004))
-            except ValueError:
-                service_port = 8004
-                
-            tags = ['django', 'notifications', 'backend']
-            
-            # Register service
-            success, service_id = register_service(service_name, service_port, tags=tags)
-            
-            if success:
-                self.service_id = service_id
-                
-                # Register shutdown handler
-                import signal
-                import atexit
-                
-                def shutdown_handler(*args, **kwargs):
-                    deregister_service(service_id)
-                    
-                atexit.register(shutdown_handler)
-                # Handle SIGTERM
-                signal.signal(signal.SIGTERM, shutdown_handler)
-                
-        except ImportError:
-            pass
-
         # Import here to avoid AppRegistryNotReady error
         from .models import NotificationTemplate
         import logging
-        
+        import sys
+        from django.conf import settings
+        import atexit
+
+        # Add backend directory to sys.path to allow importing common modules
+        sys.path.append(str(settings.BASE_DIR.parent))
+
         logger = logging.getLogger(__name__)
+
+        try:
+            from common.consul_client import ConsulClient
+            from decouple import config
+
+            if not settings.DEBUG or config('REGISTER_CONSUL', default=False, cast=bool):
+                 # Register service
+                consul_client = ConsulClient(
+                    host=settings.CONSUL_HOST,
+                    port=settings.CONSUL_PORT
+                )
+
+                def deregister():
+                    consul_client.deregister_service(settings.SERVICE_ID)
+
+                if consul_client.register_service(
+                    service_name=settings.SERVICE_NAME,
+                    service_id=settings.SERVICE_ID,
+                    address=settings.SERVICE_ADDRESS,
+                    port=settings.SERVICE_PORT,
+                    tags=settings.SERVICE_TAGS
+                ):
+                    atexit.register(deregister)
+            else:
+                logger.info("Skipping Consul registration in DEBUG mode (set REGISTER_CONSUL=True to enable)")
+
+        except ImportError:
+            pass
+        except Exception as e:
+             # We don't want to break startup if consul fails
+            logger.warning(f"Consul registration failed: {e}")
+        
+        # Define all templates
         
         # Define all templates
         templates = [

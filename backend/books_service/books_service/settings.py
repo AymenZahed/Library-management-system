@@ -175,9 +175,30 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 #    MICROSERVICES CONFIGURATION
 # ============================================
 
-# SERVICES dictionary removed in favor of Consul service discovery
-# See common/consul_utils.py get_service()
+SERVICES = {
+    'USER_SERVICE': config('USER_SERVICE_URL', default='http://localhost:8001'),
+    'BOOK_SERVICE': config('BOOK_SERVICE_URL', default='http://localhost:8002'),
+    'LOAN_SERVICE': config('LOAN_SERVICE_URL', default='http://localhost:8003'),
+    'NOTIFICATION_SERVICE': config('NOTIFICATION_SERVICE_URL', default='http://localhost:8004'),
+}
 
+# ============================================
+#    CONSUL CONFIGURATION
+# ============================================
+
+import socket
+import sys
+# Make sure we can import from common
+sys.path.append(str(BASE_DIR.parent))
+from common.consul_utils import get_ip_address
+
+CONSUL_HOST = config('CONSUL_HOST', default='consul')
+CONSUL_PORT = config('CONSUL_PORT', default=8500, cast=int)
+SERVICE_NAME = 'books-service'
+SERVICE_TAGS = ['books', 'backend']
+SERVICE_ID = f"{SERVICE_NAME}-{socket.gethostname()}"
+SERVICE_ADDRESS = config('SERVICE_ADDRESS', default=get_ip_address())
+SERVICE_PORT = config('SERVICE_PORT', default=8002, cast=int) # Default Django port, typically overridden by env
 
 # ============================================
 #    AUTHENTICATION SETTINGS

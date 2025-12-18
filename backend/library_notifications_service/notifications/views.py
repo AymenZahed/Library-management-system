@@ -169,18 +169,11 @@ def stats(request):
 # ============================================
 #    ADDITIONAL ENDPOINTS
 # ============================================
-
-from django.http import JsonResponse
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
-    """
-    GET /health/
-    Health check endpoint
-    """
+    """Health check endpoint."""
     return JsonResponse({"status": "ok"}, status=200)
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsLibrarianOrAdmin])

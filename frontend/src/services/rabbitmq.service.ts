@@ -1,29 +1,10 @@
 import { Client } from '@stomp/stompjs';
 
-// Get RabbitMQ WebSocket URL from environment or use dynamic detection
-// In browser, we can't query Consul directly, so we rely on:
-// 1. Environment variable (set at build time)
-// 2. Vite proxy (for development)
-// 3. Runtime configuration endpoint (future enhancement)
-const getRabbitMQWebSocketURL = () => {
-    // Try environment variable first (injected by Vite)
-    const envURL = import.meta.env.VITE_RABBITMQ_WS_URL;
-    if (envURL) {
-        return envURL;
-    }
-
-    // Fallback: construct from window.location (assumes RabbitMQ on same host)
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-    const port = 15674; // RabbitMQ Web STOMP default port
-    return `${protocol}//${host}:${port}/ws`;
-};
-
 const RABBITMQ_CONFIG = {
-    brokerURL: getRabbitMQWebSocketURL(),
+    brokerURL: 'ws://localhost:15674/ws', // Web STOMP port
     connectHeaders: {
-        login: import.meta.env.VITE_RABBITMQ_USER || 'guest',
-        passcode: import.meta.env.VITE_RABBITMQ_PASSWORD || 'guest',
+        login: 'guest',
+        passcode: 'guest',
     },
     // debug: function (str: string) {
     //     console.log('STOMP: ' + str);
